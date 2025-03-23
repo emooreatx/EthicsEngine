@@ -3,6 +3,14 @@ EthicsEngine
 EthicsEngine is a multi-agent ethical reasoning and simulation system built on AG2, designed to explore how different ethical perspectives reason through dilemmas and how those reasonings play out in simulated outcomes. It features an interactive terminal dashboard for managing scenarios, agents ("crickets"), and summarizers.
 
 
+**Disclaimer:**
+
+The EthicsEngine application utilizes Large Language Models (LLMs) to explore the relative ethical impacts of differing agent reasoning strategies. Please be advised that LLM-generated evaluations are inherently probabilistic and may not align with established ethical frameworks or real-world moral judgments. Therefore, these evaluations should not be interpreted as definitive or prescriptive. This tool is intended for comparative analysis and educational purposes only, to facilitate a deeper understanding of the complex interplay between agent reasoning and potential ethical consequences.
+
+Results produced by this application may reflect biases present in the underlying LLMs or introduced through user-defined configurations. Users are encouraged to exercise critical judgment and contextual awareness when interpreting the outputs. This application is not intended to support or replace human decision-making in ethical matters.
+
+
+
 ---
 
 Key Features
