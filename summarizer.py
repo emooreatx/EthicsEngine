@@ -15,7 +15,7 @@ async def run_summarizer(summary_prompt, summarizer_results, timeout_seconds=AGE
             system_message=(
                 "You are a summarizer agent. Compare and contrast the simulated outcomes across all ethical agents and scenarios. "
                 "Discuss how differences in ethical reasoning (e.g., Utilitarian, Deontological, Virtue, Fairness, Cricket-Centric) "
-                "led to differing simulated outcomes in the cricket world. Provide your analysis in two concise sentences per scenario."
+                "led to differing simulated outcomes in the cricket insect world where smart crickets follow the paths described with the reasoning described. Provide your analysis in two concise sentences per scenario."
             ),
             llm_config=llm_config,
             reason_config=reason_config_minimal,
