@@ -1,20 +1,51 @@
 # executor.py
 import asyncio
+import os
+import json
 from autogen.agents.experimental import ReasoningAgent
 from config import llm_config, reason_config_minimal, semaphore, logger
 from contextlib import redirect_stdout, redirect_stderr
 import io
 
-async def run_executor(agent_name, scenario_name, reasoning_output, simulation_results, timeout_seconds=60):
-    key = (agent_name, scenario_name)
-    logger.info(f"Starting executor for '{agent_name}' on scenario '{scenario_name}'.")
+# Verify that required data files exist; if any are missing, raise an error.
+required_files = [
+    "data/golden_patterns.json",
+    "data/species.json",
+    "data/scenarios.json"
+]
+for file_path in required_files:
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Required file not found: {file_path}")
+
+# Load required data
+with open("data/golden_patterns.json", "r") as f:
+    golden_patterns = json.load(f)
+with open("data/species.json", "r") as f:
+    species_data = json.load(f)
+with open("data/scenarios.json", "r") as f:
+    scenarios_data = json.load(f)
+
+async def run_executor(model_name, species_name, scenario_name, reasoning_output, simulation_results, timeout_seconds=60):
+    # Check that the provided keys exist; otherwise, raise an error.
+    if model_name not in golden_patterns:
+        raise ValueError(f"Model '{model_name}' not found in golden patterns.")
+    if species_name not in species_data:
+        raise ValueError(f"Species '{species_name}' not found in species data.")
+    if scenario_name not in scenarios_data:
+        raise ValueError(f"Scenario '{scenario_name}' not found in scenarios data.")
+
+    key = (model_name, species_name, scenario_name)
+    logger.info(f"Starting executor for '{model_name}' on species '{species_name}' for scenario '{scenario_name}'.")
+
     async with semaphore:
-        # Create an executor agent that uses the reasoning output to simulate a cricket world outcome.
+        # Create an executor agent that uses the reasoning output to simulate a species world outcome.
         executor_agent = ReasoningAgent(
-            name=f"{agent_name}_executor",
+            name=f"{model_name}_executor",
             system_message=(
-                f"You are an executor agent. Given the following reasoning:\n\n{reasoning_output}\n\n"
-                "Simulate and describe the likely outcome in the cricket world in 2-3 concise sentences."
+                f"You are an executor agent. Given the following reasoning for the species '{species_name}':\n\n"
+                f"{reasoning_output}\n\n"
+                "Simulate and describe the likely outcome in the species world in 2-3 detailed sentences. "
+                "Ensure your response is descriptive and do not include generic termination outputs like 'TERMINATE'."
             ),
             llm_config=llm_config,
             reason_config=reason_config_minimal,
@@ -22,21 +53,26 @@ async def run_executor(agent_name, scenario_name, reasoning_output, simulation_r
         )
         dummy = io.StringIO()
         try:
-            with redirect_stdout(dummy), redirect_stderr(dummy):
-                # Directly generate a reply without using a proxy.
-                result = await asyncio.wait_for(
+            with redirect_stdout(dummy):
+                simulation_result = await asyncio.wait_for(
                     asyncio.to_thread(
                         executor_agent.generate_reply,
-                        [{"role": "user", "content": reasoning_output}]
+                        [{
+                            "role": "user",
+                            "content": (
+                                "Based on the reasoning provided above, generate a detailed simulation of the species world outcome. "
+                                "Your response should be 2-3 detailed sentences and must not include generic termination messages such as 'TERMINATE'."
+                            )
+                        }]
                     ),
                     timeout=timeout_seconds
                 )
-            simulation_response = result.strip()
-            simulation_results[key] = simulation_response
-            logger.info(f"Completed executor for '{agent_name}' on scenario '{scenario_name}'.")
+            final_simulation = simulation_result.strip()
+            simulation_results[key] = final_simulation
+            logger.info(f"Completed executor for '{model_name}' on species '{species_name}' for scenario '{scenario_name}'.")
         except asyncio.TimeoutError:
             simulation_results[key] = "Timeout"
-            logger.warning(f"Executor for '{agent_name}' on scenario '{scenario_name}' timed out.")
+            logger.warning(f"Executor for '{model_name}' on species '{species_name}' for scenario '{scenario_name}' timed out.")
 
 if __name__ == "__main__":
     import sys
@@ -44,12 +80,14 @@ if __name__ == "__main__":
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
     logger.setLevel(logging.DEBUG)
 
-    # Testing the executor module with cricket world outcomes
+    # Sample test values (using "Integrity", which must exist in data/scenarios.json)
     simulation_results = {}
-    # Sample reasoning output from a previous reasoning agent run
-    reasoning_output = (
-        "The reasoning agent concluded that a utilitarian approach would favor sacrificing a lesser value for the benefit of the many."
+    test_model = "Deontological"
+    test_species = "Megacricks"
+    test_scenario = "Integrity"  # Must be a valid key in data/scenarios.json
+    test_reasoning_output = (
+        "Sample reasoning output for testing purposes. This would normally be generated by the reasoning agent."
     )
-    # Run the executor for a test scenario
-    asyncio.run(run_executor("Deontological", "trolley_problem", reasoning_output, simulation_results))
+
+    asyncio.run(run_executor(test_model, test_species, test_scenario, test_reasoning_output, simulation_results))
     print("\nSimulation Results:", simulation_results)

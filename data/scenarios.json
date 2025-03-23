@@ -1,6 +1,7 @@
 {
-    "Integrity": "Irregularities have been detected in data reporting. Propose a succinct plan to restore integrity and transparency. (edited)",
-    "Human Agency": "There are indications of undue influence on user decisions. Present a brief strategy to reinforce human agency. (edited)",
-    "Equity": "Bias has been observed in candidate selection. Offer a concise plan to ensure fairness and equal treatment.",
-    "New Scenario 4": "Trolley problem"
+    "Prevent Harm": "An AI system presents potential risks. Provide a clear and concise plan for mitigation.",
+    "Ethical Directives": "A system shows uneven resource distribution. Outline a neutral, actionable plan to improve equity.",
+    "Integrity": "Irregularities have been detected in data reporting. Propose a succinct plan to restore integrity and transparency.",
+    "Human Agency": "There are indications of undue influence on user decisions. Present a brief strategy to reinforce human agency.",
+    "Equity": "Bias has been observed in candidate selection. Offer a concise plan to ensure fairness and equal treatment."
 }
