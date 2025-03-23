@@ -7,7 +7,7 @@ EthicsEngine is a multi-agent ethical reasoning and simulation system built on A
 
 Key Features
 
-Agentic Reasoning with AG2: Leverages ReasoningAgent and UserProxyAgent from AG2
+Agentic Reasoning with AG2: Leverages ReasoningAgent from AG2
 
 Two-Stage Architecture:
 
