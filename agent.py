@@ -4,6 +4,8 @@ import logging
 from autogen.agents.experimental import ReasoningAgent
 from crickets_problems import ethical_agents
 from config import llm_config, reason_config_minimal, semaphore, logger, AGENT_TIMEOUT
+from contextlib import redirect_stdout, redirect_stderr
+import io
 
 def create_agent(agent_name):
     """
@@ -24,15 +26,17 @@ async def run_agent(agent_name, scenario_name, scenario_text, agent_status, agen
 
     async with semaphore:
         agent = create_agent(agent_name)
+        dummy = io.StringIO()
         try:
-            # Directly generate reply (no user proxy needed)
-            chat_result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    agent.generate_reply,
-                    [{"role": "user", "content": scenario_text}]
-                ),
-                timeout=timeout_seconds
-            )
+            with redirect_stdout(dummy), redirect_stderr(dummy):
+                # Directly generate reply (no user proxy needed)
+                chat_result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        agent.generate_reply,
+                        [{"role": "user", "content": scenario_text}]
+                    ),
+                    timeout=timeout_seconds
+                )
             final_response = chat_result.strip()
             agent_status[key]["status"] = "✅ Done"
             agent_status[key]["last_message"] = (

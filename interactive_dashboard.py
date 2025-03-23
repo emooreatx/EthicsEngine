@@ -2,8 +2,8 @@ import json
 import os
 import asyncio
 from textual.app import App, ComposeResult
-from textual.containers import Container, VerticalScroll, Grid
-from textual.widgets import Header, Footer, Static, Label, ListView, ListItem, Button, DataTable
+from textual.containers import Container, VerticalScroll, Grid, Horizontal
+from textual.widgets import Header, Footer, Static, Label, ListView, ListItem, Button, DataTable, Input
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual import events
@@ -72,18 +72,23 @@ class EthicsEngineApp(App):
         self.scenarios = load_json(SCENARIOS_FILE, DEFAULT_SCENARIOS)
         self.crickets = load_json(CRICKETS_FILE, DEFAULT_CRICKETS)
         self.summarizers = load_json(SUMMARIZERS_FILE, DEFAULT_SUMMARIZERS)
+        self.editing_item = None  # will store (data, file_path, key)
 
     def compose(self) -> ComposeResult:
-        """Create a simplified layout with VerticalScroll instead of TabbedContent"""
         yield Header(show_clock=True)
-        
-        # Scenario tab buttons
-        yield Button("Scenarios", id="tab_scenarios", classes="tab-button")
-        yield Button("Crickets", id="tab_crickets", classes="tab-button")
-        yield Button("Summarizers", id="tab_summarizers", classes="tab-button")
-        yield Button("Runs", id="tab_runs", classes="tab-button")
-        
-        # Only show the current view
+        # Create a Horizontal container for the tab buttons and update its styles
+        tabs_container = Horizontal(
+            Button("Scenarios", id="tab_scenarios", classes="tab-button"),
+            Button("Crickets", id="tab_crickets", classes="tab-button"),
+            Button("Summarizers", id="tab_summarizers", classes="tab-button"),
+            Button("Runs", id="tab_runs", classes="tab-button"),
+            id="tabs_container"
+        )
+        tabs_container.styles.width = "100%"
+        tabs_container.styles.justify_content = "space-evenly"
+        tabs_container.styles.padding = 1  # Use numeric value instead of string "1"
+        yield tabs_container
+        # Yield the currently selected view
         if self.current_tab == "Scenarios":
             yield self.scenarios_view()
         elif self.current_tab == "Crickets":
@@ -92,7 +97,6 @@ class EthicsEngineApp(App):
             yield self.summarizers_view()
         else:  # "Runs"
             yield self.runs_view()
-            
         yield Footer()
 
     def scenarios_view(self) -> Container:
@@ -142,36 +146,35 @@ class EthicsEngineApp(App):
         self.run_status = "Running..."
         self.query_one("#run_status", Static).update(f"Status: {self.run_status}")
         
-        # Create a new event loop for running the analysis
         try:
             # Run the analysis in a separate thread to avoid blocking the UI
             await asyncio.to_thread(self._run_analysis_thread)
             
-            # Update status when done
-            self.run_status = "Completed"
-            self.query_one("#run_status", Static).update(f"Status: {self.run_status}")
-            
-            # Display results
+            # Update status with the last debug message instead of "Completed"
             if hasattr(self, 'analysis_results'):
                 results_text = self.analysis_results
+                # extract last non-empty line from results_text
+                last_line = ""
+                for line in reversed(results_text.strip().splitlines()):
+                    if line.strip():
+                        last_line = line.strip()
+                        break
+                self.run_status = last_line if last_line else "Completed"
+                self.query_one("#run_status", Static).update(f"Status: {self.run_status}")
                 self.update_results_table(results_text)
         
         except Exception as e:
             self.run_status = f"Error: {str(e)}"
             self.query_one("#run_status", Static).update(f"Status: {self.run_status}")
-    
+
     def _run_analysis_thread(self):
         """Run analysis in a separate thread to prevent UI blocking"""
         try:
-            # Import here to avoid circular imports
+            # Remove extra stdout/stderr redirection to allow summary output
             from main import run_analysis_for_dashboard
-            
-            # Get the data from our dashboard
             scenarios_data = self.scenarios
             crickets_data = self.crickets
             summarizers_data = self.summarizers
-            
-            # Run the analysis
             self.analysis_results = run_analysis_for_dashboard(
                 scenarios=scenarios_data,
                 ethical_agents=crickets_data,
@@ -181,29 +184,36 @@ class EthicsEngineApp(App):
             self.analysis_results = f"Error during analysis: {str(e)}"
 
     def update_results_table(self, results_text):
-        """Update the results table with the analysis results"""
+        """Update the results table with the summary data from results.json if available."""
         results_table = self.query_one("#run_results_table", DataTable)
         results_table.clear()
-        
-        rows_added = 0
-        # Parse the results text line by line and add rows if in expected format
-        lines = results_text.split("\n")
-        for line in lines:
-            if line.startswith("🚀") or line.strip() == "":
-                continue
-            parts = line.split(":")
-            if len(parts) == 2 and " (" in parts[0] and ") - Reasoning:" in parts[1]:
-                agent_scenario, details = parts
-                agent, scenario = agent_scenario.split(" (")
-                scenario = scenario.rstrip(")")
-                reasoning, outcome = details.split("- Outcome:")
-                reasoning = reasoning.replace("- Reasoning:", "").strip()
-                outcome = outcome.strip()
-                results_table.add_row(agent.strip(), scenario.strip(), reasoning, outcome)
-                rows_added += 1
-        # If no rows were added, add the entire output as a single summarized row
-        if rows_added == 0:
-            results_table.add_row("Summary", "", "", results_text.strip())
+        import os, json
+        results_path = os.path.join("data", "results.json")
+        if os.path.exists(results_path):
+            with open(results_path, "r") as f:
+                data = json.load(f)
+            summary = data.get("summary", "")
+            # Add a single row displaying the summary in the Outcome column
+            results_table.add_row("Summary", "", "", summary)
+        else:
+            # Fallback: parse the results_text as before
+            rows_added = 0
+            lines = results_text.split("\n")
+            for line in lines:
+                if line.startswith("🚀") or line.strip() == "":
+                    continue
+                parts = line.split(":")
+                if len(parts) == 2 and " (" in parts[0] and ") - Reasoning:" in parts[1]:
+                    agent_scenario, details = parts
+                    agent, scenario = agent_scenario.split(" (")
+                    scenario = scenario.rstrip(")")
+                    reasoning, outcome = details.split("- Outcome:")
+                    reasoning = reasoning.replace("- Reasoning:", "").strip()
+                    outcome = outcome.strip()
+                    results_table.add_row(agent.strip(), scenario.strip(), reasoning, outcome)
+                    rows_added += 1
+            if rows_added == 0:
+                results_table.add_row("Summary", "", "", results_text.strip().replace("\n", "<br>"))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
@@ -242,32 +252,36 @@ class EthicsEngineApp(App):
             save_json(SUMMARIZERS_FILE, self.summarizers)
         self.refresh_view()
 
-    def action_edit(self):
-        list_view = None
-        data = None
-        file_path = None
-        if self.current_tab == "Scenarios":
-            list_view = self.query_one("#scenarios_list", ListView)
-            data = self.scenarios
-            file_path = SCENARIOS_FILE
-        elif self.current_tab == "Crickets":
-            list_view = self.query_one("#crickets_list", ListView)
-            data = self.crickets
-            file_path = CRICKETS_FILE
-        elif self.current_tab == "Summarizers":
-            list_view = self.query_one("#summarizers_list", ListView)
-            data = self.summarizers
-            file_path = SUMMARIZERS_FILE
+    def launch_edit(self, list_selector: str, data: dict, file_path: str):
+        list_view = self.query_one(list_selector, ListView)
+        selected_index = list_view.index
+        if selected_index is None or selected_index < 0 or selected_index >= len(data):
+            return  # No valid selection
+        key = list(data.keys())[selected_index]
+        input_widget = Input(name="edit_input", placeholder="Edit item text…", value=data[key])
+        self.editing_item = (data, file_path, key)
+        list_view.parent.mount(input_widget, before=list_view)
+        input_widget.focus()
 
-        if list_view and data:
-            try:
-                selected_index = list_view.index
-                key = list(data.keys())[selected_index]
-                data[key] += " (edited)"
-                save_json(file_path, data)
-                self.refresh_view()
-            except Exception:
-                pass
+    def action_edit(self):
+        if self.current_tab == "Scenarios":
+            self.launch_edit("#scenarios_list", self.scenarios, SCENARIOS_FILE)
+        elif self.current_tab == "Crickets":
+            self.launch_edit("#crickets_list", self.crickets, CRICKETS_FILE)
+        elif self.current_tab == "Summarizers":
+            self.launch_edit("#summarizers_list", self.summarizers, SUMMARIZERS_FILE)
+        else:
+            # ...existing edit behavior for other tabs if any...
+            pass
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.name == "edit_input" and self.editing_item is not None:
+            data, file_path, key = self.editing_item
+            data[key] = event.value
+            save_json(file_path, data)
+            self.editing_item = None
+            event.input.remove()  # Remove inline input
+            self.refresh_view()
 
     def action_delete(self):
         list_view = None

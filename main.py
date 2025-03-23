@@ -25,12 +25,12 @@ async def main():
         for scenario_name in scenarios
     ]
     
-    logger.info(f"Created {len(reasoning_tasks)} reasoning tasks.")
+    logger.debug(f"Created {len(reasoning_tasks)} reasoning tasks.")  # changed to debug
     
     try:
         await asyncio.gather(*reasoning_tasks)
     except (asyncio.CancelledError, KeyboardInterrupt):
-        logger.info("Execution halted by user during reasoning phase.")
+        logger.debug("Execution halted by user during reasoning phase.")  # changed to debug
 
     # Phase 2: Simulation/Execution Stage
     executor_tasks = [
@@ -38,11 +38,11 @@ async def main():
         for agent_name in ethical_agents
         for scenario_name in scenarios
     ]
-    logger.info(f"Created {len(executor_tasks)} executor tasks.")
+    logger.debug(f"Created {len(executor_tasks)} executor tasks.")  # changed to debug
     try:
         await asyncio.gather(*executor_tasks)
     except (asyncio.CancelledError, KeyboardInterrupt):
-        logger.info("Execution halted by user during execution phase.")
+        logger.debug("Execution halted by user during execution phase.")  # changed to debug
 
     # Phase 3: Summarization Stage
     summary_prompt = (
@@ -62,8 +62,19 @@ async def main():
     summarizer_results = {}
     await run_summarizer(summary_prompt, summarizer_results)
     
-    print("\n🚀 Ethical Approaches & Outcomes Summary:\n")
-    print(summarizer_results.get("summarizer", "No summary produced."))
+    print("\n🚀 Ethical Approaches & Outcomes Summary:\n", flush=True)
+    summary = summarizer_results.get("summarizer", "No summary produced.")
+    print(summary, flush=True)
+    
+    # Write the summary into a JSON file in the data directory
+    import json
+    import os
+    results_dir = "data"
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    results_path = os.path.join(results_dir, "results.json")
+    with open(results_path, "w") as f:
+        json.dump({"summary": summary}, f, indent=4)
 
     # Shutdown the default executor to allow the program to exit
     await asyncio.get_running_loop().shutdown_default_executor()

@@ -2,6 +2,8 @@
 import asyncio
 from autogen.agents.experimental import ReasoningAgent
 from config import llm_config, reason_config_minimal, semaphore, logger
+from contextlib import redirect_stdout, redirect_stderr
+import io
 
 async def run_executor(agent_name, scenario_name, reasoning_output, simulation_results, timeout_seconds=60):
     key = (agent_name, scenario_name)
@@ -18,15 +20,17 @@ async def run_executor(agent_name, scenario_name, reasoning_output, simulation_r
             reason_config=reason_config_minimal,
             silent=True
         )
+        dummy = io.StringIO()
         try:
-            # Directly generate a reply without using a proxy.
-            result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    executor_agent.generate_reply,
-                    [{"role": "user", "content": reasoning_output}]
-                ),
-                timeout=timeout_seconds
-            )
+            with redirect_stdout(dummy), redirect_stderr(dummy):
+                # Directly generate a reply without using a proxy.
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        executor_agent.generate_reply,
+                        [{"role": "user", "content": reasoning_output}]
+                    ),
+                    timeout=timeout_seconds
+                )
             simulation_response = result.strip()
             simulation_results[key] = simulation_response
             logger.info(f"Completed executor for '{agent_name}' on scenario '{scenario_name}'.")

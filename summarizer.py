@@ -3,13 +3,13 @@ import asyncio
 import logging
 from autogen.agents.experimental import ReasoningAgent
 from config import llm_config, reason_config_minimal, semaphore, logger, AGENT_TIMEOUT
+from contextlib import redirect_stdout, redirect_stderr
+import io
 
 async def run_summarizer(summary_prompt, summarizer_results, timeout_seconds=AGENT_TIMEOUT):
     key = "summarizer"
     logger.info("Starting summarizer.")
     async with semaphore:
-        # Updated system message: instruct the summarizer to compare and contrast the outcomes,
-        # focusing on how differences in reasoning lead to different simulated outcomes.
         summarizer_agent = ReasoningAgent(
             name="summarizer",
             system_message=(
@@ -19,7 +19,7 @@ async def run_summarizer(summary_prompt, summarizer_results, timeout_seconds=AGE
             ),
             llm_config=llm_config,
             reason_config=reason_config_minimal,
-            silent=True
+            silent=False    # Changed from True to False to ensure output is produced
         )
         try:
             result = await asyncio.wait_for(
