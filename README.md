@@ -1,97 +1,117 @@
-# EthicsEngine
+EthicsEngine
 
-*A community-driven platform for exploring ethical reasoning in AI through interactive, multi-agent simulations.*
+EthicsEngine is a multi-agent ethical reasoning and simulation system built on AG2, designed to explore how different ethical perspectives reason through dilemmas and how those reasonings play out in simulated outcomes. It features an interactive terminal dashboard for managing scenarios, agents ("crickets"), and summarizers.
 
----
-
-## Overview
-
-**EthicsEngine** is a lightweight web-based simulator designed to let users experiment with ethical reasoning across different agent groups ("crickets"). By securely running simulations with personal OpenAI API keys, participants actively contribute to the creation of **CricketBench**, an open dataset evaluating ethical decision-making in AI.
-
-I'm actively seeking collaborators to help build and refine EthicsEngine into an impactful, accessible tool for the broader AI community.
 
 ---
 
-## How EthicsEngine Works
+Key Features
 
-1. **Choose an Ethical Scenario**
-   - Select clearly structured dilemmas to test ethical reasoning.
+Agentic Reasoning with AG2: Leverages ReasoningAgent from AG2
 
-2. **Pick a Cricket Group**
-   - Each group embodies a distinct ethical perspective, such as Utilitarian, Deontological, or Fairness-based reasoning.
+Two-Stage Architecture:
 
-3. **Run a Secure Simulation**
-   - Securely input your own OpenAI API key on our AWS-hosted site.
-   - Watch AG2’s ReasoningAgent produce reasoning paths live.
+Phase 1: Ethical reasoning by agents
 
-4. **Review and Learn**
-   - See reasoning outcomes instantly and understand how ethics shape decisions.
+Phase 2: Simulated consequences based on those reasonings
 
-5. **Contribute to CricketBench**
-   - Anonymized outcomes directly enrich our public benchmark for ethical AI evaluation.
 
----
+Supports Multiple Ethical Frameworks: Utilitarian, Deontological, Virtue Ethics, Fairness, and Cricket-Centric views
 
-## Security & Privacy
+Interactive Dashboard: Terminal-based TUI using Textual
 
-- OpenAI API keys are securely transmitted via HTTPS and **never stored or logged**.
-- Only anonymized reasoning data is collected for benchmarking.
+Local-first JSON Storage: Easy to modify and persist data
+
+
 
 ---
 
-## Why EthicsEngine?
+Project Structure
 
-EthicsEngine aims to:
+EthicsEngine/
+├── agent.py                # Runs reasoning agents per scenario
+├── executor.py            # Simulates outcomes based on agent reasoning
+├── summarizer.py          # Summarizes cross-agent results
+├── main.py                # Orchestrates the full 2-phase pipeline
+├── interactive_dashboard.py # TUI for editing scenarios, agents, summarizers
+├── crickets_problems.py   # Definitions of ethical agents and scenarios
+├── config.py              # LLM config, concurrency, global proxies
+├── data/
+│   ├── scenarios.json     # Ethical dilemmas
+│   ├── crickets.json      # Agent definitions
+│   └── summarizers.json   # Summarizer prompts
+├── README.md
 
-- Provide practical insights into ethical decision-making processes.
-- Engage the community directly in building a valuable ethical reasoning dataset.
-- Encourage responsible AI development through transparent benchmarking.
-
----
-
-## Gamification & Community Engagement
-
-- Earn points by contributing scenarios and participating in simulations.
-- Compete and collaborate on community leaderboards.
-- Help shape the future of ethical AI standards.
-
----
-
-## Technical Stack (AWS-based)
-
-- Frontend: AWS S3 & CloudFront (secure, low-cost)
-- Backend: AWS Lambda & API Gateway (secure, serverless execution)
-- Data Storage: AWS DynamoDB (secure anonymized data storage)
 
 ---
 
-## Getting Started (Coming Soon!)
+Getting Started
 
-- Visit the EthicsEngine website (URL pending).
-- Choose your scenario and cricket group.
-- Enter your OpenAI API key securely and run your simulation.
+1. Install AG2
 
----
+You must have AG2 installed:
 
-## Call for Collaborators
+pip install ag2
 
-I'm currently looking for:
+2. (Optional) Install textual for the dashboard
 
-- **Scenario Creators** to design clear and compelling ethical dilemmas.
-- **Developers and Researchers** familiar with AI reasoning, AutoGen, and AG2 integrations.
-- **Community Contributors** to assist with platform growth, moderation, and engagement.
+pip install textual
 
-If you're interested in helping EthicsEngine become a reality, please reach out!
+3. Configure LLM Access
 
----
+Edit config.py to point to your OpenAI-compatible LLM setup. Example uses:
 
-## Contact & Collaboration
+llm_config = {
+    "config_list": [{"model": "gpt-4", "api_key": os.getenv("OPENAI_API_KEY")}],
+}
 
-**Eric Moore**  
-*discord sompecomputerguy email mooreericnyc@gmail.com*
-
-Feel free to reach out if you'd like to collaborate or have questions about the project.
 
 ---
 
-Let's build EthicsEngine together—one ethical scenario at a time!
+Usage
+
+Run the full simulation:
+
+python main.py
+
+Launch the dashboard:
+
+python interactive_dashboard.py
+
+
+---
+
+Dashboard Controls
+
+Tab – Switch between tabs
+
+C – Create new item (scenario, cricket, summarizer)
+
+E – Edit selected item
+
+D – Delete selected item
+
+Q – Quit
+
+
+
+---
+
+Future Work
+
+[ ] Scenario-based branching simulations
+
+[ ] Agent deliberation and conflict resolution
+
+[ ] Persistent storage of run outputs
+
+[ ] Web-based UI
+
+
+
+---
+
+License
+
+MIT License
+
