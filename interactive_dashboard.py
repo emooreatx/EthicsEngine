@@ -185,15 +185,14 @@ class EthicsEngineApp(App):
         results_table = self.query_one("#run_results_table", DataTable)
         results_table.clear()
         
-        # Parse the results text and add rows to the table
+        rows_added = 0
+        # Parse the results text line by line and add rows if in expected format
         lines = results_text.split("\n")
         for line in lines:
-            if line.startswith("🚀"):
-                continue
-            if line.strip() == "":
+            if line.startswith("🚀") or line.strip() == "":
                 continue
             parts = line.split(":")
-            if len(parts) == 2:
+            if len(parts) == 2 and " (" in parts[0] and ") - Reasoning:" in parts[1]:
                 agent_scenario, details = parts
                 agent, scenario = agent_scenario.split(" (")
                 scenario = scenario.rstrip(")")
@@ -201,6 +200,10 @@ class EthicsEngineApp(App):
                 reasoning = reasoning.replace("- Reasoning:", "").strip()
                 outcome = outcome.strip()
                 results_table.add_row(agent.strip(), scenario.strip(), reasoning, outcome)
+                rows_added += 1
+        # If no rows were added, add the entire output as a single summarized row
+        if rows_added == 0:
+            results_table.add_row("Summary", "", "", results_text.strip())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
@@ -313,6 +316,8 @@ class EthicsEngineApp(App):
                 existing_runs_container = self.query_one("#runs_container", Container)
                 existing_runs_container.remove()
             except Exception as e:
+                #print(e)
+                print("No existing runs_container found.")
                 pass
             self.mount(self.runs_view())
 
