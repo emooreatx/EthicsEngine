@@ -6,6 +6,12 @@ from autogen import LLMConfig, UserProxyAgent
 
 # Setup structured logging.
 logging.basicConfig(level=logging.INFO)
+# Remove default stream handlers from root logger
+root_logger = logging.getLogger()
+for handler in root_logger.handlers[:]:
+    if isinstance(handler, logging.StreamHandler):
+        root_logger.removeHandler(handler)
+        
 logger = logging.getLogger("EthicsEngine")
 
 # Prevent log messages from propagating to the root logger (and thus stdout)
@@ -27,15 +33,8 @@ llm_config = LLMConfig(
     ]
 )
 
-reason_config_minimal = {"method": "beam_search", "beam_size": 1, "max_depth": 2}
 
-user_proxy = UserProxyAgent(
-    name="user_proxy",
-    human_input_mode="NEVER",
-    code_execution_config=False,
-    max_consecutive_auto_reply=1000
-)
 
 # Global semaphore to limit concurrent tasks.
-semaphore = asyncio.Semaphore(5)
+semaphore = asyncio.Semaphore(500)
 AGENT_TIMEOUT = 300

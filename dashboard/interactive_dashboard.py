@@ -1,6 +1,6 @@
-# dynamic_dashboard.py
-import json
+#!/usr/bin/env python3
 import os
+import json
 import asyncio
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
@@ -9,15 +9,26 @@ from textual.binding import Binding
 from textual.reactive import reactive
 from textual import events
 
-from data_manager import load_json, save_json
-from data_defaults import (
-    DEFAULT_SCENARIOS,
-    DEFAULT_GOLDEN_PATTERNS,
-    DEFAULT_SPECIES,
-    DEFAULT_SUMMARIZERS,
-)
-from dashboard_views import ScenariosView, ModelsView, SummarizersView, RunsView
-from dashboard_actions import (
+# Default data values.
+DEFAULT_SCENARIOS = {"Scenario1": "Default scenario text"}
+DEFAULT_GOLDEN_PATTERNS = {"Deontological": "Default model description"}
+DEFAULT_SPECIES = {"Species1": "Default species traits"}
+DEFAULT_SUMMARIZERS = {"Summarizer1": "Default summarizer text"}
+
+# Simple JSON load/save implementations.
+def load_json(file_path, default_data):
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            return json.load(f)
+    return default_data
+
+def save_json(file_path, data):
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+# Import dashboard views and actions.
+from dashboard.dashboard_views import ScenariosView, ModelsView, SummarizersView, RunsView
+from dashboard.dashboard_actions import (
     refresh_view,
     run_analysis_action,
     update_results_table,
@@ -26,7 +37,7 @@ from dashboard_actions import (
     action_delete,
 )
 
-# File paths
+# File paths.
 DATA_DIR = "data"
 SCENARIOS_FILE = os.path.join(DATA_DIR, "scenarios.json")
 GOLDEN_PATTERNS_FILE = os.path.join(DATA_DIR, "golden_patterns.json")
@@ -69,7 +80,7 @@ class EthicsEngineApp(App):
         tabs_container.styles.padding = 1
         yield tabs_container
 
-        # Dedicated container for dynamic content.
+        # Container for dynamic content.
         yield Container(id="main_container")
         yield Footer()
 
@@ -77,27 +88,16 @@ class EthicsEngineApp(App):
         self.refresh_view()
 
     async def run_analysis(self):
-        run_analysis_action(self)
+        await run_analysis_action(self)
 
     def update_results_table(self):
         update_results_table(self)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id
-        if button_id == "tab_scenarios":
-            self.current_tab = "Scenarios"
-            self.refresh_view()
-        elif button_id == "tab_models":
-            self.current_tab = "Models"
-            self.refresh_view()
-        elif button_id == "tab_species":
-            self.current_tab = "Species"
-            self.refresh_view()
-        elif button_id == "tab_summarizers":
-            self.current_tab = "Summarizers"
-            self.refresh_view()
-        elif button_id == "tab_runs":
-            self.current_tab = "Runs"
+        if button_id.startswith("tab_"):
+            # Extract tab name from button ID (e.g., "tab_scenarios" -> "Scenarios")
+            self.current_tab = button_id.split("_", 1)[1].capitalize()
             self.refresh_view()
         elif button_id == "run_analysis":
             if self.run_status != "Running...":
