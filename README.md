@@ -1,3 +1,5 @@
+![alt text](Ethicsengine.jpg "Title")
+
 EthicsEngine
 
 EthicsEngine is a multi-agent ethical reasoning and simulation system built on AG2, designed to explore how different ethical perspectives reason through dilemmas and how those reasonings play out in simulated outcomes. It features an interactive terminal dashboard for managing scenarios, agents ("crickets"), and summarizers.
