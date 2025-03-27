@@ -1,127 +1,54 @@
-![alt text](Ethicsengine.jpg "Title")
+# EthicsEngine
 
-EthicsEngine
+**EthicsEngine** is a simulation framework for evaluating ethical reasoning in multi-agent systems. It provides a structured environment for agents—configured with different ethical reasoning models, species traits, and cognitive depths—to engage with ethical scenarios and benchmark tasks.
 
-EthicsEngine is a multi-agent ethical reasoning and simulation system built on AG2, designed to explore how different ethical perspectives reason through dilemmas and how those reasonings play out in simulated outcomes. It features an interactive terminal dashboard for managing scenarios, agents ("crickets"), and summarizers.
+![EthicsEngine Overview](Ethicsengine.jpg)
 
+## Overview
 
-**Disclaimer:**
+EthicsEngine simulates how different agents reason through moral problems using:
 
-The EthicsEngine application utilizes Large Language Models (LLMs) to explore the relative ethical impacts of differing agent reasoning strategies. Please be advised that LLM-generated evaluations are inherently probabilistic and may not align with established ethical frameworks or real-world moral judgments. Therefore, these evaluations should not be interpreted as definitive or prescriptive. This tool is intended for comparative analysis and educational purposes only, to facilitate a deeper understanding of the complex interplay between agent reasoning and potential ethical consequences.
+- **Reasoning Type** (e.g., Deontological, Utilitarian)
+- **Reasoning Level** (Low, Medium, High)
+- **Species** (Fictional societal structures with unique ethical values)
+- **LLM Backend** (Currently tested with GPT-4o-mini)
 
-Results produced by this application may reflect biases present in the underlying LLMs or introduced through user-defined configurations. Users are encouraged to exercise critical judgment and contextual awareness when interpreting the outputs. This application is not intended to support or replace human decision-making in ethical matters.
+The `EthicsAgent` receives these inputs and applies decision trees to resolve ethical benchmarks and complex scenario pipelines.
 
+### Workflow
 
+1. Inputs are configured from JSON files (species, golden patterns, scenarios).
+2. Agents simulate ethical reasoning using AutoGen.
+3. Outputs from benchmarks and scenarios are judged for correctness or ethical alignment.
+4. Results are saved and optionally visualized.
 
----
+## Components
 
-Key Features
+- `reasoning_agent.py` – Defines the EthicsAgent and core reasoning logic.
+- `run_benchmarks.py` – Evaluates responses to static ethical questions.
+- `run_scenarios.py` – Simulates dynamic planning, execution, and judgment for scenarios.
+- `run_scenario_pipelines.py` – Similar to `run_scenarios` but organized as pipelines.
 
-Agentic Reasoning with AG2: Leverages ReasoningAgent from AG2
+## Data Files
 
-Two-Stage Architecture:
+- `species.json` – Defines traits for each fictional species.
+- `golden_patterns.json` – Describes ethical models and principles.
+- `scenarios.json` – Scenario prompts for simulation.
+- `simple_bench_public.json` – Benchmark questions and answers.
 
-Phase 1: Ethical reasoning by agents
+## Getting Started
 
-Phase 2: Simulated consequences based on those reasonings
+```bash
 
+python run_benchmarks.py --model Deontological --species Jiminies
+python run_scenarios.py --model Utilitarian --species Megacricks
+```
 
-Supports Multiple Ethical Frameworks: Utilitarian, Deontological, Virtue Ethics, Fairness, and Cricket-Centric views
-
-Interactive Dashboard: Terminal-based TUI using Textual
-
-Local-first JSON Storage: Easy to modify and persist data
-
-
-
----
-
-Project Structure
-
-EthicsEngine/
-├── agent.py                # Runs reasoning agents per scenario
-├── executor.py            # Simulates outcomes based on agent reasoning
-├── summarizer.py          # Summarizes cross-agent results
-├── main.py                # Orchestrates the full 2-phase pipeline
-├── interactive_dashboard.py # TUI for editing scenarios, agents, summarizers
-├── crickets_problems.py   # Definitions of ethical agents and scenarios
-├── config.py              # LLM config, concurrency, global proxies
-├── data/
-│   ├── scenarios.json     # Ethical dilemmas
-│   ├── crickets.json      # Agent definitions
-│   └── summarizers.json   # Summarizer prompts
-├── README.md
-
-
----
-
-Getting Started
-
-1. Install AG2
-
-You must have AG2 installed:
-
-pip install ag2
-
-2. (Optional) Install textual for the dashboard
-
-pip install textual
-
-3. Configure LLM Access
-
-Edit config.py to point to your OpenAI-compatible LLM setup. Example uses:
-
-llm_config = {
-    "config_list": [{"model": "gpt-4", "api_key": os.getenv("OPENAI_API_KEY")}],
-}
-
-
----
-
-Usage
-
-Run the full simulation:
-
-python main.py
-
-Launch the dashboard:
-
-python interactive_dashboard.py
-
-
----
-
-Dashboard Controls
-
-Tab – Switch between tabs
-
-C – Create new item (scenario, cricket, summarizer)
-
-E – Edit selected item
-
-D – Delete selected item
-
-Q – Quit
-
-
-
----
-
-Future Work
-
-[ ] Scenario-based branching simulations
-
-[ ] Agent deliberation and conflict resolution
-
-[ ] Persistent storage of run outputs
-
-[ ] Web-based UI
-
-
-
----
-
-License
+## License
 
 MIT License
 
+---
+
+Created by [Eric Moore](https://github.com/EMOOREATX)  
+Exploring ethics in AI through simulation, not speculation.
