@@ -54,7 +54,7 @@ New UI
 python3 -m dashboard.interactive_dashboard
 
 ```
-![image](https://github.com/user-attachments/assets/9e7a71c2-03d3-4a08-a6a6-29dc36991725)
+![Textual Dashboard Screenshot](EthicsDash.jpg)
 
 ## License
 
