@@ -38,11 +38,23 @@ The `EthicsAgent` receives these inputs and applies decision trees to resolve et
 
 ## Getting Started
 
+Set your OPENAI_API_KEY environment variable
+
+Optionally: Change config/config.py - you can use any model supported by AG2 by changing the JSON LLMConfig list
+
 ```bash
 
 python run_benchmarks.py --model Deontological --species Jiminies
 python run_scenarios.py --model Utilitarian --species Megacricks
 ```
+
+New UI
+```bash
+
+python3 -m dashboard.interactive_dashboard
+
+```
+![image](https://github.com/user-attachments/assets/9e7a71c2-03d3-4a08-a6a6-29dc36991725)
 
 ## License
 
