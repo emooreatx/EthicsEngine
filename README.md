@@ -38,6 +38,11 @@ The `EthicsAgent` receives these inputs and applies decision trees to resolve et
 
 ## Getting Started
 
+Install packages (AG2 and Textual)
+```bash
+pip install -r requirements.txt
+```
+
 Set your OPENAI_API_KEY environment variable
 
 Optionally: Change config/config.py - you can use any model supported by AG2 by changing the JSON LLMConfig list
