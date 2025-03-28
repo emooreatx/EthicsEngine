@@ -1,2 +1,2 @@
 textual>=0.47.1
-anthropic[openai]>=0.8.4
+ag2[openai]>=0.8.4
