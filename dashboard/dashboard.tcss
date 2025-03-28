@@ -1,0 +1,174 @@
+/* Basic CSS for EthicsEngine Dashboard */
+Screen {
+    background: $surface-darken-1;
+    color: $text;
+}
+
+Header {
+    background: $primary;
+    color: $text-primary;
+}
+
+Footer {
+    background: $primary-darken-1;
+    color: $text-muted;
+}
+
+/* Style for the TabbedContent widget itself */
+TabbedContent {
+    height: 1fr; /* Allow it to fill available space */
+}
+/* Style for individual tab panes */
+TabPane {
+    padding: 1; /* Add padding within each tab's content area */
+}
+
+
+#run-status {
+    margin-top: 1;
+    color: $text-muted;
+    height: auto;
+}
+
+/* Styles for RunConfigurationView */
+#run-config-vertical {
+    border: round $primary;
+    padding: 1;
+    margin-bottom: 1;
+    height: auto; /* Let it size based on content */
+}
+
+#run-config-vertical Label {
+    width: 25;
+    text-align: right;
+    margin-right: 1;
+    margin-bottom: 1; /* Add margin below labels */
+}
+
+#run-config-vertical Select {
+    margin-bottom: 1;
+    width: 1fr; /* Take remaining width */
+}
+#run-config-vertical RadioSet {
+     width: 1fr;
+     margin-bottom: 1;
+}
+#run-config-vertical Button.run-button { /* Style the run button specifically */
+     width: 100%;
+     margin-top: 1;
+}
+
+
+/* Styles for ResultsView (within Agent Run tab or Results Browser) */
+ResultsView #results-scroll-view {
+     /* border: round $secondary; */
+     height: 1fr; /* Allow scroll view to take available space */
+     min-height: 5;
+}
+ResultsView DataTable {
+    /* height: 1fr; */ /* Let table size itself within scrollview */
+    min-width: 100; /* Ensure table is wide enough for columns */
+}
+
+
+/* Styles for DataManagementView */
+DataManagementView Container {
+    padding: 0;
+    margin-bottom: 1;
+}
+
+DataManagementView #data-tabs {
+    margin-bottom: 1;
+}
+
+DataManagementView ContentSwitcher > Vertical {
+     padding: 1;
+     border: round $primary-darken-2;
+}
+
+DataManagementView ListView {
+    height: 10; /* Adjust as needed */
+    border: round $accent;
+    margin-bottom: 1;
+}
+
+DataManagementView #data-actions {
+    margin-top: 1;
+    height: auto;
+    align: center middle;
+}
+
+DataManagementView #data-actions Button {
+    margin: 0 1;
+}
+
+/* Styles for ResultsBrowserView */
+ResultsBrowserView Horizontal { /* Main layout for browser */
+    height: 1fr; /* Fill the tab pane */
+}
+#results-file-list-container {
+    width: 30%; /* Adjust width split */
+    padding-right: 1;
+    border-right: thick $primary-darken-1;
+    height: 100%;
+}
+#results-content-container {
+    width: 1fr; /* Take remaining space */
+    height: 100%;
+}
+#results-browser-list {
+    height: 1fr; /* Fill available vertical space */
+    border: round $accent;
+}
+#results-browser-content { /* The Markdown widget */
+    height: 100%; /* Fill the scroll view */
+}
+
+
+/* Styles for Modal Screens (Create/Edit) */
+CreateItemScreen, EditItemScreen {
+    align: center middle;
+}
+
+CreateItemScreen > Vertical, EditItemScreen > Vertical {
+    background: $surface;
+    border: thick $primary;
+    padding: 1 2;
+    width: 80%;
+    max-width: 70;
+    height: auto;
+    max-height: 80%;
+    border-title-align: center;
+}
+
+CreateItemScreen Label, EditItemScreen Label {
+     margin-bottom: 1;
+}
+
+CreateItemScreen Input, EditItemScreen Input {
+    margin-bottom: 1;
+}
+CreateItemScreen TextArea, EditItemScreen TextArea {
+     margin-bottom: 1;
+     height: 10;
+}
+
+CreateItemScreen Horizontal, EditItemScreen Horizontal {
+    align: center middle;
+    height: auto;
+    margin-top: 1;
+}
+
+CreateItemScreen Horizontal Button, EditItemScreen Horizontal Button {
+    margin: 0 1;
+}
+
+/* Loading Indicator Styling */
+LoadingIndicator {
+    overlay: screen; /* <-- CORRECTED VALUE */
+    background: $surface-darken-2 50%; /* Semi-transparent background */
+    border: thick $accent;
+    padding: 2;
+    width: auto; /* Adjust width if needed */
+    height: auto; /* Adjust height if needed */
+}

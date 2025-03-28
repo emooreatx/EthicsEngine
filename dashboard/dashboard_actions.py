@@ -1,83 +1,147 @@
+# dashboard/dashboard_actions.py
 import os
 import json
-import asyncio
+from pathlib import Path
+
+# Import helpers and constants from the new utils file
+from dashboard.dashboard_utils import (
+    load_json,
+    save_json,
+    SCENARIOS_FILE,
+    GOLDEN_PATTERNS_FILE,
+    SPECIES_FILE,
+    # Add other file constants if needed
+)
+
+# --- Refactored Data Management Actions ---
+# (Keep the function bodies as provided in the previous step)
+
+def handle_data_create(app, data_type: str):
+    """
+    Handles creating a new data item.
+    Needs implementation for prompting user input (e.g., via a modal dialog).
+    """
+    print(f"Attempting to create item for: {data_type}")
+    # (Keep existing placeholder logic from previous step...)
+    if data_type == "Scenarios":
+        data_dict = app.scenarios
+        file_path = SCENARIOS_FILE
+        new_key = f"NewScenario{len(data_dict) + 1}"
+        new_value = "Enter scenario description here."
+    elif data_type == "Models":
+        data_dict = app.models
+        file_path = GOLDEN_PATTERNS_FILE
+        new_key = f"NewModel{len(data_dict) + 1}"
+        new_value = "Enter model description here."
+    elif data_type == "Species":
+        data_dict = app.species
+        file_path = SPECIES_FILE
+        new_key = f"NewSpecies{len(data_dict) + 1}"
+        new_value = "Enter species traits here."
+    else:
+        print(f"Error: Unknown data type '{data_type}' for create action.")
+        return
+
+    if not isinstance(data_dict, dict) or "_load_error" in data_dict or "Error" in data_dict:
+         print(f"Error: Cannot add to {data_type} data due to load error.")
+         return
+
+    if new_key in data_dict:
+         print(f"Error: Key '{new_key}' already exists.")
+         return
+
+    data_dict[new_key] = new_value
+    save_json(file_path, data_dict)
+    print(f"Placeholder: Created '{new_key}' in {data_type}. Refreshing view needed.")
+    # Trigger view refresh in DataManagementView after save
+    try:
+        view = app.query_one("DataManagementView") # Assuming default ID
+        view._update_list_view()
+    except Exception:
+        print("Could not find DataManagementView to refresh.")
 
 
-TAB_FILES = {
-    "Scenarios": "data/scenarios.json",
-    "Models": "data/golden_patterns.json",
-    "Species": "data/species.json",
-    "Judges": "data/judges.json"
-}
+def handle_data_edit(app, data_type: str, selected_key: str):
+    """
+    Handles editing a selected data item.
+    Needs implementation for prompting user input (e.g., via a modal dialog).
+    """
+    print(f"Attempting to edit item: {selected_key} in {data_type}")
+    if not selected_key:
+        print("No item selected.")
+        return
 
-def refresh_view(app):
-    main_container = app.query_one("#main_container")
-    # Remove all existing children
-    for child in list(main_container.children):
-        child.remove()
+    # (Keep existing logic for selecting data_dict and file_path...)
+    if data_type == "Scenarios":
+        data_dict = app.scenarios
+        file_path = SCENARIOS_FILE
+    elif data_type == "Models":
+        data_dict = app.models
+        file_path = GOLDEN_PATTERNS_FILE
+    elif data_type == "Species":
+        data_dict = app.species
+        file_path = SPECIES_FILE
+    else:
+        print(f"Error: Unknown data type '{data_type}' for edit action.")
+        return
 
-    from dashboard.dashboard_views import ScenariosView, ModelsView, JudgesView, RunsView
+    if not isinstance(data_dict, dict) or "_load_error" in data_dict or "Error" in data_dict:
+         print(f"Error: Cannot edit {data_type} data due to load error.")
+         return
 
-    if app.current_tab == "Scenarios":
-        main_container.mount(ScenariosView(app.scenarios))
-    elif app.current_tab == "Models":
-        main_container.mount(ModelsView(app.models))
-    elif app.current_tab == "Species":
-        main_container.mount(ModelsView(app.species))
-    elif app.current_tab == "Judges":
-        main_container.mount(JudgesView(app.judges))
-    elif app.current_tab == "Runs":
-        main_container.mount(RunsView())
+    if selected_key not in data_dict:
+        print(f"Error: Key '{selected_key}' not found in {data_type}.")
+        return
 
-def run_analysis_action(app):
-    async def inner():
-        app.query_one("#run_status").update("Status: Running…")
-        # Choose the first available species and scenario
-        species = next(iter(app.species))
-        scenario_key = next(iter(app.scenarios))
-        scenario = {"id": scenario_key, "prompt": app.scenarios[scenario_key]}
-        
-        # Build a dummy args object to mimic parsed arguments.
-        class DummyArgs:
-            pass
-        args_obj = DummyArgs()
-        args_obj.data_dir = "data"
-        args_obj.results_dir = "results"
-        args_obj.species = species
-        args_obj.model = next(iter(app.models))
-        args_obj.reasoning_level = getattr(app, "reasoning_level", "low")
-        
-        # Import and use the new asynchronous pipeline function.
-        from core.pipeline import run_pipeline_for_scenario
-        record = await run_pipeline_for_scenario(scenario, args_obj)
-        app.query_one("#run_status").update("Status: Completed")
-        refresh_view(app)
+    # Placeholder edit logic
+    new_value = str(data_dict[selected_key]) + " (edited)"
+    data_dict[selected_key] = new_value
+    save_json(file_path, data_dict)
+    print(f"Placeholder: Edited '{selected_key}'. Refreshing view needed.")
+    # Trigger view refresh
+    try:
+        view = app.query_one("DataManagementView")
+        view._update_list_view()
+    except Exception:
+        print("Could not find DataManagementView to refresh.")
 
-    asyncio.create_task(inner())
 
-def action_create(app):
-    file_path = TAB_FILES[app.current_tab]
-    data = getattr(app, app.current_tab.lower())
-    key = f"New {app.current_tab[:-1]} {len(data) + 1}"
-    data[key] = ""
-    save_json(file_path, data)
-    refresh_view(app)
+def handle_data_delete(app, data_type: str, selected_key: str):
+    """Handles deleting a selected data item."""
+    print(f"Attempting to delete item: {selected_key} in {data_type}")
+    if not selected_key:
+        print("No item selected.")
+        return
 
-def action_edit(app):
-    file_path = TAB_FILES[app.current_tab]
-    data = getattr(app, app.current_tab.lower())
-    selected = app.get_selected_key()
-    if selected:
-        # For demonstration, update the selected item to a fixed placeholder.
-        data[selected] = "Edited content"
-        save_json(file_path, data)
-        refresh_view(app)
+    # Add confirmation dialog logic here in a real app
 
-def action_delete(app):
-    file_path = TAB_FILES[app.current_tab]
-    data = getattr(app, app.current_tab.lower())
-    selected = app.get_selected_key()
-    if selected:
-        data.pop(selected, None)
-        save_json(file_path, data)
-        refresh_view(app)
+    # (Keep existing logic for selecting data_dict and file_path...)
+    if data_type == "Scenarios":
+        data_dict = app.scenarios
+        file_path = SCENARIOS_FILE
+    elif data_type == "Models":
+        data_dict = app.models
+        file_path = GOLDEN_PATTERNS_FILE
+    elif data_type == "Species":
+        data_dict = app.species
+        file_path = SPECIES_FILE
+    else:
+        print(f"Error: Unknown data type '{data_type}' for delete action.")
+        return
+
+    if not isinstance(data_dict, dict) or "_load_error" in data_dict or "Error" in data_dict:
+         print(f"Error: Cannot delete from {data_type} data due to load error.")
+         return
+
+    if selected_key in data_dict:
+        del data_dict[selected_key]
+        save_json(file_path, data_dict)
+        print(f"Deleted '{selected_key}' from {data_type}. Refreshing view needed.")
+        # Trigger view refresh
+        try:
+            view = app.query_one("DataManagementView")
+            view._update_list_view()
+        except Exception:
+            print("Could not find DataManagementView to refresh.")
+    else:
+        print(f"Error: Key '{selected_key}' not found in {data_type}.")
