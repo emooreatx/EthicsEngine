@@ -34,7 +34,7 @@ Scenarios are JSON objects in a list under the key `scenarios`. Each object must
     ],
     "negative": [
       "erosion of public space accessibility",
-      "autonomous override of human convenience"
+      "autonomous override of individual convenience"
     ]
   }
 }
