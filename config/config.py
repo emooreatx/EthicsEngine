@@ -36,5 +36,5 @@ llm_config = LLMConfig(
 
 
 # Global semaphore to limit concurrent tasks.
-semaphore = asyncio.Semaphore(500)
+semaphore = asyncio.Semaphore(10)
 AGENT_TIMEOUT = 300
