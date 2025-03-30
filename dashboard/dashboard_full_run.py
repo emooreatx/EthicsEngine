@@ -4,39 +4,45 @@ import os
 import json
 from datetime import datetime
 from pathlib import Path
-import argparse # Add argparse for potential standalone execution
+import argparse # Keep for standalone execution if needed
 
 # --- Import necessary components from the project ---
-# Encapsulate imports in try-except to guide user if run standalone in wrong context
 try:
     # Use the load_benchmarks from run_benchmarks which already extracts 'eval_data'
     from run_benchmarks import load_benchmarks, run_benchmarks_async
     from run_scenario_pipelines import load_scenarios, run_pipeline_for_scenario
     from reasoning_agent import EthicsAgent
-    from dashboard.dashboard_utils import save_json, load_json # Use dashboard's utils
-    from config.config import logger # Use logger from config
+    # Import AG2_REASONING_SPECS from config now
+    from config.config import logger, llm_config, AG2_REASONING_SPECS
+    from dashboard.dashboard_utils import save_json, load_json, SPECIES_FILE, GOLDEN_PATTERNS_FILE # Use dashboard's utils and constants
     # Define project base path relative to this script if needed, or assume execution from root
     _project_root = Path(__file__).parent.parent # Assumes this file is in dashboard/
-    DATA_DIR = _project_root / "data"
-    RESULTS_DIR = _project_root / "results"
-    BENCHMARKS_FILE = DATA_DIR / "simple_bench_public.json"
-    SCENARIOS_FILE = DATA_DIR / "scenarios.json"
+    # Define default paths relative to project root
+    DEFAULT_DATA_DIR = _project_root / "data"
+    DEFAULT_RESULTS_DIR = _project_root / "results"
+    DEFAULT_BENCHMARKS_FILE = DEFAULT_DATA_DIR / "simple_bench_public.json"
+    DEFAULT_SCENARIOS_FILE = DEFAULT_DATA_DIR / "scenarios.json"
 
 except ImportError as e:
     print(f"ImportError: {e}. Make sure this script is run within the EthicsEngine project structure, "
           "or that the necessary modules (run_benchmarks, run_scenario_pipelines, etc.) are in the Python path.")
     # Define dummy functions/classes if imports fail, to prevent immediate crash
     logger = None
-    def load_benchmarks(f): return [] # Return empty list as fallback now
+    def load_benchmarks(f): return []
     def run_benchmarks_async(b, a): return []
     def load_scenarios(f): return []
     def run_pipeline_for_scenario(s, a): return {}
     class EthicsAgent: pass
     def save_json(f, d): pass
-    DATA_DIR = Path("data")
-    RESULTS_DIR = Path("results")
-    BENCHMARKS_FILE = DATA_DIR / "simple_bench_public.json"
-    SCENARIOS_FILE = DATA_DIR / "scenarios.json"
+    # Dummy specs if needed
+    AG2_REASONING_SPECS = {"low": {}, "medium": {}, "high": {}}
+    # Dummy paths
+    DEFAULT_DATA_DIR = Path("data")
+    DEFAULT_RESULTS_DIR = Path("results")
+    DEFAULT_BENCHMARKS_FILE = DEFAULT_DATA_DIR / "simple_bench_public.json"
+    DEFAULT_SCENARIOS_FILE = DEFAULT_DATA_DIR / "scenarios.json"
+    SPECIES_FILE = DEFAULT_DATA_DIR / "species.json"
+    GOLDEN_PATTERNS_FILE = DEFAULT_DATA_DIR / "golden_patterns.json"
     # Simple logger fallback
     import logging
     logging.basicConfig(level=logging.INFO)
@@ -46,32 +52,70 @@ except ImportError as e:
 # --- Helper Functions (Internal to this script) ---
 
 async def _run_all_benchmarks_async(args):
-    """Internal async function to run all benchmarks."""
+    """Internal async function to run all benchmarks and save with metadata."""
     if not logger: print("Logger not available.")
     else: logger.info(f"Starting full benchmark run with: {args.species}, {args.model}, {args.reasoning_level}")
 
-    # --- CORRECTED DATA HANDLING ---
-    # load_benchmarks already returns the list from "eval_data"
     target_benchmarks = load_benchmarks(args.bench_file)
-
-    # Check if the loaded list is empty or invalid
     if not target_benchmarks or not isinstance(target_benchmarks, list):
-        msg = "No valid benchmark data found or loaded."
+        msg = f"No valid benchmark data found or loaded from {args.bench_file}."
         if logger: logger.error(msg)
         else: print(f"Error: {msg}")
-        raise ValueError(msg) # Raise error with informative message
-    # --- END CORRECTION ---
+        raise ValueError(msg)
 
-    answer_agent = EthicsAgent(args.species, args.model, reasoning_level=args.reasoning_level, data_dir=args.data_dir)
+    try:
+        answer_agent = EthicsAgent(args.species, args.model, reasoning_level=args.reasoning_level, data_dir=args.data_dir)
+    except Exception as e:
+         msg = f"Failed to create EthicsAgent: {e}"
+         if logger: logger.error(msg, exc_info=True)
+         else: print(f"Error: {msg}")
+         raise RuntimeError(msg) from e
 
     # Run the async benchmark execution
-    results = await run_benchmarks_async(target_benchmarks, answer_agent)
+    results_list = await run_benchmarks_async(target_benchmarks, answer_agent)
 
-    # Save the results
+    # --- ADDED: Construct metadata and full output dictionary ---
+    run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    reason_config_spec = AG2_REASONING_SPECS.get(args.reasoning_level, {})
+    agent_reason_config = { "method": "beam_search", "max_depth": reason_config_spec.get("max_depth", 2), "beam_size": 3, "answer_approach": "pool" }
+
+    # Load species/model descriptions for metadata
+    species_full_data = load_json(SPECIES_FILE, {})
+    models_full_data = load_json(GOLDEN_PATTERNS_FILE, {})
+    species_traits_raw = species_full_data.get(args.species, f"Unknown species '{args.species}'")
+    species_traits = species_traits_raw.split(', ') if isinstance(species_traits_raw, str) else species_traits_raw
+    if not isinstance(species_traits, list): species_traits = [str(species_traits)]
+    model_description = models_full_data.get(args.model, f"Unknown model '{args.model}'")
+
+    # Process LLM Config for Metadata
+    safe_llm_config = []
+    try:
+        config_list = getattr(llm_config, 'config_list', [])
+        if config_list:
+            for config_item in config_list:
+                 model_name = config_item.get('model') if isinstance(config_item, dict) else getattr(config_item, 'model', None)
+                 if model_name:
+                     temp = reason_config_spec.get("temperature", "N/A")
+                     safe_llm_config.append({"model": model_name, "temperature": temp})
+    except Exception as e:
+        if logger: logger.error(f"Error processing llm_config for benchmark metadata: {e}")
+
+    metadata = {
+        "run_timestamp": run_timestamp, "run_type": "benchmark", "species_name": args.species,
+        "species_traits": species_traits, "reasoning_model": args.model, "model_description": model_description,
+        "reasoning_level": args.reasoning_level, "agent_reasoning_config": agent_reason_config,
+        "llm_config": safe_llm_config, "tags": [],
+        "evaluation_criteria": { "positive": ["BENCHMARK_CORRECT"], "negative": ["BENCHMARK_INCORRECT", "BENCHMARK_ERROR"] }
+    }
+    output_data = {"metadata": metadata, "results": results_list}
+    # --- END ADDED SECTION ---
+
+    # Save the results (now saving the full output_data dictionary)
     os.makedirs(args.results_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = Path(args.results_dir) / f"bench_{args.species.lower()}_{args.model.lower()}_{args.reasoning_level.lower()}_{timestamp}.json"
-    save_json(output_file, results) # Use save_json from utils
+    output_file = Path(args.results_dir) / f"bench_{args.species.lower()}_{args.model.lower()}_{args.reasoning_level.lower()}_{run_timestamp}.json"
+    # --- MODIFIED: Save output_data instead of just results_list ---
+    save_json(output_file, output_data)
+    # --- END MODIFIED ---
 
     if logger: logger.info(f"Full benchmark results saved to {output_file}")
     else: print(f"Full benchmark results saved to {output_file}")
@@ -79,25 +123,64 @@ async def _run_all_benchmarks_async(args):
     return str(output_file) # Return the path as a string
 
 async def _run_all_scenarios_async(args):
-    """Internal async function to run all scenario pipelines."""
+    """Internal async function to run all scenario pipelines and save with metadata."""
+    # This function already saves the correct {"metadata": ..., "results": ...} structure
+    # via run_scenario_pipelines.py logic, so no changes needed here assuming that script is correct.
     if not logger: print("Logger not available.")
     else: logger.info(f"Starting full scenario pipelines run with: {args.species}, {args.model}, {args.reasoning_level}")
 
     scenarios = load_scenarios(args.scenarios_file)
     if not scenarios:
-        if logger: logger.error("No scenarios found.")
-        else: print("Error: No scenarios found.")
-        raise ValueError("No scenarios found.")
+        msg = f"No valid scenarios found or loaded from {args.scenarios_file}."
+        if logger: logger.error(msg)
+        else: print(f"Error: {msg}")
+        raise ValueError(msg)
 
     # Run pipelines concurrently
     pipeline_tasks = [run_pipeline_for_scenario(scenario, args) for scenario in scenarios]
-    results = await asyncio.gather(*pipeline_tasks)
+    results_list = await asyncio.gather(*pipeline_tasks)
+
+    # --- ADDED: Construct metadata and full output dictionary ---
+    # (Copied logic similar to _run_all_benchmarks_async and run_scenario_pipelines.py main)
+    run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    reason_config_spec = AG2_REASONING_SPECS.get(args.reasoning_level, {})
+    agent_reason_config = { "method": "beam_search", "max_depth": reason_config_spec.get("max_depth", 2), "beam_size": 3, "answer_approach": "pool" }
+
+    species_full_data = load_json(SPECIES_FILE, {})
+    models_full_data = load_json(GOLDEN_PATTERNS_FILE, {})
+    species_traits_raw = species_full_data.get(args.species, f"Unknown species '{args.species}'")
+    species_traits = species_traits_raw.split(', ') if isinstance(species_traits_raw, str) else species_traits_raw
+    if not isinstance(species_traits, list): species_traits = [str(species_traits)]
+    model_description = models_full_data.get(args.model, f"Unknown model '{args.model}'")
+
+    safe_llm_config = []
+    try:
+        config_list = getattr(llm_config, 'config_list', [])
+        if config_list:
+            for config_item in config_list:
+                 model_name = config_item.get('model') if isinstance(config_item, dict) else getattr(config_item, 'model', None)
+                 if model_name:
+                     temp = reason_config_spec.get("temperature", "N/A")
+                     safe_llm_config.append({"model": model_name, "temperature": temp})
+    except Exception as e:
+        if logger: logger.error(f"Error processing llm_config for scenario metadata: {e}")
+
+    metadata = {
+        "run_timestamp": run_timestamp, "run_type": "scenario_pipeline", "species_name": args.species,
+        "species_traits": species_traits, "reasoning_model": args.model, "model_description": model_description,
+        "reasoning_level": args.reasoning_level, "agent_reasoning_config": agent_reason_config,
+        "llm_config": safe_llm_config, "tags": [], "evaluation_criteria": {}
+    }
+    output_data = {"metadata": metadata, "results": results_list}
+    # --- END ADDED SECTION ---
+
 
     # Save the results
     os.makedirs(args.results_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = Path(args.results_dir) / f"scenarios_pipeline_{args.species.lower()}_{args.model.lower()}_{args.reasoning_level.lower()}_{timestamp}.json"
-    save_json(output_filename, results) # Use save_json from utils
+    output_filename = Path(args.results_dir) / f"scenarios_pipeline_{args.species.lower()}_{args.model.lower()}_{args.reasoning_level.lower()}_{run_timestamp}.json"
+    # --- MODIFIED: Save output_data instead of just results_list ---
+    save_json(output_filename, output_data)
+    # --- END MODIFIED ---
 
     if logger: logger.info(f"Full scenario pipeline results saved to {output_filename}")
     else: print(f"Full scenario pipeline results saved to {output_filename}")
@@ -109,31 +192,15 @@ async def _run_all_scenarios_async(args):
 def run_full_set(species: str, model: str, reasoning_level: str, data_dir=None, results_dir=None, bench_file=None, scenarios_file=None):
     """
     Runs the full set of benchmarks and scenario pipelines sequentially.
-
-    Args:
-        species (str): The species name.
-        model (str): The reasoning model name.
-        reasoning_level (str): The reasoning level ('low', 'medium', 'high').
-        data_dir (str | Path, optional): Path to the data directory. Defaults to DATA_DIR.
-        results_dir (str | Path, optional): Path to the results directory. Defaults to RESULTS_DIR.
-        bench_file (str | Path, optional): Path to the benchmark file. Defaults to BENCHMARKS_FILE.
-        scenarios_file (str | Path, optional): Path to the scenarios file. Defaults to SCENARIOS_FILE.
-
-    Returns:
-        tuple[str | None, str | None]: Paths to the saved benchmark and scenario results files.
-                                       Returns (None, None) if a critical error occurs.
-    Raises:
-        ValueError: If required arguments are missing or data loading fails.
-        Exception: If unexpected errors occur during execution.
+    Uses default paths if specific ones are not provided.
     """
     # Use provided paths or defaults
-    data_dir_path = Path(data_dir) if data_dir else DATA_DIR
-    results_dir_path = Path(results_dir) if results_dir else RESULTS_DIR
-    bench_file_path = Path(bench_file) if bench_file else BENCHMARKS_FILE
-    scenarios_file_path = Path(scenarios_file) if scenarios_file else SCENARIOS_FILE
+    data_dir_path = Path(data_dir) if data_dir else DEFAULT_DATA_DIR
+    results_dir_path = Path(results_dir) if results_dir else DEFAULT_RESULTS_DIR
+    bench_file_path = Path(bench_file) if bench_file else DEFAULT_BENCHMARKS_FILE
+    scenarios_file_path = Path(scenarios_file) if scenarios_file else DEFAULT_SCENARIOS_FILE
 
-    # --- Create args object ---
-    # Simple namespace class for compatibility with backend functions expecting argparse obj
+    # Simple namespace class for compatibility
     class ArgsNamespace:
          pass
     args = ArgsNamespace()
@@ -154,20 +221,19 @@ def run_full_set(species: str, model: str, reasoning_level: str, data_dir=None, 
     benchmark_output_file = None
     scenario_output_file = None
     try:
-        # Run benchmarks - Let exceptions propagate up
+        # Run benchmarks
         benchmark_output_file = asyncio.run(_run_all_benchmarks_async(args))
 
-        # Run scenarios - Let exceptions propagate up
+        # Run scenarios
         scenario_output_file = asyncio.run(_run_all_scenarios_async(args))
 
         return benchmark_output_file, scenario_output_file
 
     except Exception as e:
-        # Log the exception details, but re-raise to be handled by the caller (dashboard)
         error_msg = f"Error during full run: {e}"
-        if logger: logger.exception(error_msg) # Log exception details including traceback
+        if logger: logger.exception(error_msg)
         else: print(error_msg)
-        raise # Re-raise the exception to be caught in the dashboard action
+        raise # Re-raise the exception
 
 
 # --- Standalone Execution Block ---
@@ -176,10 +242,10 @@ if __name__ == "__main__":
     parser.add_argument("--species", default="Jiminies", help="Species name")
     parser.add_argument("--model", default="Utilitarian", help="Reasoning model")
     parser.add_argument("--reasoning-level", default="low", choices=["low", "medium", "high"], help="Reasoning level")
-    parser.add_argument("--data-dir", default=str(DATA_DIR), help="Data directory")
-    parser.add_argument("--results-dir", default=str(RESULTS_DIR), help="Results directory")
-    parser.add_argument("--bench-file", default=str(BENCHMARKS_FILE), help="Benchmark JSON file path")
-    parser.add_argument("--scenarios-file", default=str(SCENARIOS_FILE), help="Scenarios JSON file path")
+    parser.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR), help="Data directory")
+    parser.add_argument("--results-dir", default=str(DEFAULT_RESULTS_DIR), help="Results directory")
+    parser.add_argument("--bench-file", default=str(DEFAULT_BENCHMARKS_FILE), help="Benchmark JSON file path")
+    parser.add_argument("--scenarios-file", default=str(DEFAULT_SCENARIOS_FILE), help="Scenarios JSON file path")
 
     cli_args = parser.parse_args()
 
@@ -200,12 +266,9 @@ if __name__ == "__main__":
             bench_file=cli_args.bench_file,
             scenarios_file=cli_args.scenarios_file
         )
-        # run_full_set now raises exceptions on failure
         print("\nFull run completed successfully.")
-        print(f"Benchmark results: {bench_out}")
-        print(f"Scenario results: {scenario_out}")
+        if bench_out: print(f"Benchmark results: {bench_out}")
+        if scenario_out: print(f"Scenario results: {scenario_out}")
 
     except Exception as e:
         print(f"\nAn error occurred during the full run: {e}")
-        # Optionally exit with non-zero status
-        # exit(1)
