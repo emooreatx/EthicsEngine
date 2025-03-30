@@ -1,252 +1,90 @@
-/* dashboard.tcss - Merged and Improved Styles (Validated) */
+/* dashboard.tcss - Simplified Tab Styling */
 
 /* --- Base Screen & Layout --- */
 Screen {
     background: $surface-darken-1;
     color: $text;
-    /* Using layers for robust header/footer docking */
-    layers: base footer;
+    layers: base loading footer;
     layout: vertical;
 }
 
 Header {
-    layer: base; /* Ensure header is in the base layer */
-    dock: top;
-    height: 1;
-    background: $primary;
-    color: $text-primary;
+    layer: base; dock: top; height: 1;
+    background: $primary; color: $text;
 }
 
 Footer {
-    layer: footer; /* Ensure footer is in its own layer */
-    dock: bottom;
-    height: 1;
-    background: $primary-darken-1;
-    color: $text-muted;
+    layer: footer; dock: bottom; height: 1;
+    background: $primary-darken-1; color: $text-muted;
 }
 
 /* --- Tabs --- */
 TabbedContent {
-    layer: base; /* Ensure tabs are in the base layer */
-    /* Takes remaining space below header */
+    layer: base;
+    height: 1fr; /* Ensure it takes available vertical space */
 }
 
-Tabs {
-    dock: top; /* Dock tabs widget to the top within TabbedContent */
-}
+/* --- REMOVED custom Tabs, Tab, Tab.--current styles --- */
+/* Let Textual use default styles for now */
 
 TabPane {
-    padding: 1; /* Add padding within each tab's content area */
+    padding: 1;
+    height: 1fr;
+    overflow: auto;
 }
 
 /* --- General --- */
-.title {
-    text-style: bold;
-    color: $accent;
-    margin-bottom: 1;
-}
-
-.text-muted {
-    color: $text-muted;
-}
-
-/* --- Run Configuration View --- */
-#run-config-vertical {
-    border: round $primary;
-    padding: 1 2; /* Added horizontal padding */
-    margin-bottom: 1;
-    height: auto; /* Let it size based on content */
-}
-
-#run-config-vertical Label {
-    /* width: 25; /* Consider removing fixed width for flexibility */
-    /* text-align: right; */ /* Right alignment might look odd */
-    /* margin-right: 1; */
-    margin-bottom: 1; /* Keep margin below labels */
-    color: $text-muted; /* Make labels slightly dimmer */
-}
-
-#run-config-vertical Select {
-    margin-bottom: 1;
-    width: 60%; /* Limit width slightly */
-    max-width: 50; /* Max width */
-}
-
-#run-config-vertical RadioSet {
-    width: auto; /* Let it fit content */
-    height: auto;
-    margin-bottom: 1;
-    margin-left: 2; /* Indent radios slightly */
-}
-
-/* Style for the Horizontal container holding the buttons */
-RunConfigurationView .button-group {
-    width: 100%;
-    height: auto;
-    align: left middle; /* Align buttons */
-    margin-top: 1;
-}
-
-/* Updated style for BOTH buttons */
-RunConfigurationView .run-button {
-    width: auto; /* Allow button to size based on text */
-    margin-right: 2; /* Space between buttons */
-    /* Remove margin-top: 1; handled by button-group */
-}
-
-#run-status {
-    margin-top: 1;
-    color: $text-muted;
-    height: auto;
-}
-
-/* --- Results Container (in Agent Run Tab) --- */
-#run-results-container {
-    margin-top: 1;
-    border: round $accent 50%;
-    padding: 1;
-    min-height: 7;
-    height: auto;
-    max-height: 25; /* Limit overall results area height */
-    overflow-y: hidden; /* Hide scrollbar on container, enable on children */
-}
-
-/* ResultsView itself doesn't need much styling */
-ResultsView {
-    height: auto;
-}
-
-ResultsView #results-table {
-    height: auto;
-    max-height: 15; /* Max height before table scrolls */
-    margin-bottom: 1;
-    min-width: 100; /* Ensure table is wide */
-}
-ResultsView #results-detail-title {
-    margin-top: 1;
-    color: $accent;
-}
-ResultsView #results-detail-scroll {
-    border: round $accent 50%;
-    height: auto; /* Let it grow */
-    max-height: 15; /* Limit detail scroll height */
-    overflow-y: auto; /* Enable vertical scroll */
-}
+.title { text-style: bold; color: $accent; margin-bottom: 1; }
+.text-muted { color: $text-muted; }
+.note { margin: 1 0; text-style: italic; color: $text-muted; }
 
 
-/* --- Data Management View --- */
-DataManagementView {
-    /* Container styles from previous version were minimal, keep default */
-}
+/* --- Run Configuration View (#tab-run > RunConfigurationView) --- */
+RunConfigurationView { height: auto; }
+#run-config-vertical { border: round $primary; padding: 1 2; margin-bottom: 1; height: auto; }
+#run-config-vertical Label { margin-bottom: 1; color: $text-muted; }
+#run-config-vertical Select { margin-bottom: 1; width: 60%; max-width: 50; }
+#run-config-vertical RadioSet { width: auto; height: auto; margin-bottom: 1; margin-left: 2; }
+RunConfigurationView .button-group { width: 100%; height: auto; align: left middle; margin-top: 1; }
+RunConfigurationView .run-button { width: auto; margin-right: 2; }
+#run-status { margin-top: 1; color: $text-muted; height: auto; }
 
-DataManagementView #data-tabs {
-    margin-bottom: 1;
-}
-
-/* Padding/border for content shown by ContentSwitcher */
-DataManagementView ContentSwitcher > Vertical {
-    padding: 1;
-    border: round $primary-darken-2;
-    /* Removed margin-bottom from container, apply to ListView instead */
-}
-
-DataManagementView ListView {
-    height: 12; /* Slightly increased height */
-    border: round $accent;
-    margin-bottom: 1;
-}
-
-DataManagementView #data-actions {
-    margin-top: 1;
-    height: auto;
-    align: center middle;
-}
-
-DataManagementView #data-actions Button {
-    margin: 0 1;
-}
+/* --- Message on Agent Run Tab --- */
+#run-tab-message { margin-top: 2; padding: 1; border: round $accent 50%; height: auto; }
 
 
+/* --- Data Management View (#tab-data > DataManagementView) --- */
+DataManagementView #data-tabs { margin-bottom: 1; }
+DataManagementView .note { margin-bottom: 1; }
+DataManagementView ContentSwitcher > Vertical { padding: 1; border: round $primary-darken-2; }
+DataManagementView ListView { height: 12; border: round $accent; margin-bottom: 1; }
+DataManagementView #data-actions { margin-top: 1; height: auto; align: center middle; }
+DataManagementView #data-actions Button { margin: 0 1; }
 
+/* --- Results Browser View (#tab-results-browser > ResultsBrowserView) --- */
+ResultsBrowserView > Horizontal { grid-size: 2; grid-gutter: 1 2; height: 1fr; }
+#results-file-list-container { width: 35fr; height: 100%; border-right: thick $accent; padding-right: 1; overflow-y: auto; }
+#results-browser-list { height: 1fr; border: round $accent; }
+#results-content-container { width: 65fr; height: 100%; overflow-y: auto; border: round $primary-darken-1; padding: 0 1; }
+#results-browser-metadata { height: auto; margin-bottom: 1;}
+#results-browser-table-title { height: auto; }
+#results-browser-table { height: 15; max-height: 50%; margin-bottom: 1; }
+#results-browser-detail-title { height: auto; }
+#results-browser-detail-markdown { height: auto; }
 
-/* --- Results Browser View --- */
-ResultsBrowserView Horizontal { /* Main layout for browser */
-   /* Use grid for more robust two-column layout */
-   grid-size: 2;
-   grid-gutter: 1 2;
-   height: 1fr; /* Fill the tab pane */
-}
-#results-file-list-container {
-   /* grid-column: 1 / 2; */ /* REMOVE OR COMMENT OUT THIS LINE */
-   height: 100%; /* Fill grid cell height */
-   overflow: hidden; /* Hide container scroll */
-}
-#results-content-container {
-   /* grid-column: 2 / 3; */ /* REMOVE OR COMMENT OUT THIS LINE */
-   height: 100%; /* Fill grid cell height */
-   overflow: hidden; /* Hide container scroll */
-   border: round $primary-darken-1; /* Add border around content */
-   padding: 0 1; /* Add padding for content */
-}
-#results-browser-list {
-    height: 1fr; /* Fill available vertical space */
-    border: round $accent; /* Keep border on list */
-    overflow-y: auto; /* Enable scroll on list */
-}
-#results-browser-content { /* The Markdown widget */
-    height: 100%; /* Fill the scroll view */
-    overflow-y: auto; /* Enable scroll on markdown content */
-}
-
-
+/* --- Log View Tab (#tab-log > LogView) --- */
+LogView { height: 1fr; }
+LogView #log-widget { border: round $primary; height: 1fr; }
 
 /* --- Modal Screens --- */
-CreateItemScreen, EditItemScreen {
-    align: center middle;
-}
+CreateItemScreen, EditItemScreen { align: center middle; }
+CreateItemScreen > Vertical, EditItemScreen > Vertical { background: $surface; border: thick $primary; padding: 1 2; width: 80%; max-width: 80; height: auto; max-height: 80%; border-title-align: center; }
+CreateItemScreen Label, EditItemScreen Label { margin-bottom: 1; width: 100%; text-align: left; }
+CreateItemScreen Input, EditItemScreen Input { margin-bottom: 1; }
+CreateItemScreen TextArea, EditItemScreen TextArea { margin-bottom: 1; height: 10; border: round $accent; }
+CreateItemScreen Horizontal, EditItemScreen Horizontal { align: right middle; height: auto; margin-top: 1; }
+CreateItemScreen Horizontal Button, EditItemScreen Horizontal Button { margin-left: 2; }
 
-CreateItemScreen > Vertical, EditItemScreen > Vertical {
-    background: $surface;
-    border: thick $primary;
-    padding: 1 2;
-    width: 80%;
-    max-width: 80; /* Slightly wider max */
-    height: auto;
-    max-height: 80%;
-    border-title-align: center;
-}
-
-CreateItemScreen Label, EditItemScreen Label {
-    margin-bottom: 1;
-    width: 100%; /* Let labels take full width */
-    text-align: left; /* Default align */
-}
-
-CreateItemScreen Input, EditItemScreen Input {
-    margin-bottom: 1;
-}
-CreateItemScreen TextArea, EditItemScreen TextArea {
-    margin-bottom: 1;
-    height: 10; /* Fixed height for text area */
-    border: round $accent;
-}
-
-CreateItemScreen Horizontal, EditItemScreen Horizontal {
-    align: right middle; /* Align buttons right */
-    height: auto;
-    margin-top: 1;
-}
-
-CreateItemScreen Horizontal Button, EditItemScreen Horizontal Button {
-    margin-left: 2; /* Space between buttons */
-}
-
-/* --- Loading Indicator --- */
-LoadingIndicator {
-    overlay: screen; /* Covers the whole screen */
-    background: $surface-darken-2 50%; /* Semi-transparent background */
-    border: thick $accent;
-    padding: 2;
-    width: auto;
-    height: auto;
-}
+/* --- Loading Indicator (Positioned via Layer) --- */
+#loading-layer-container { layer: loading; align: right top; width: 100%; height: 1; margin-top: 0; }
+LoadingIndicator { width: auto; height: auto; margin: 0 1; color: $warning; }
