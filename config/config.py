@@ -37,6 +37,7 @@ llm_config = LLMConfig(
     config_list=[
         # == Configuration Option 1: OpenAI ==
         # Uses the OPENAI_API_KEY environment variable.
+        
         {
             "model": "gpt-4o-mini",
             # Ensure the API key environment variable is set
@@ -44,18 +45,13 @@ llm_config = LLMConfig(
             # "base_url": "YOUR_OPENAI_COMPATIBLE_ENDPOINT", # Optional: For Azure OpenAI or other compatible endpoints
         },
 
-        # == Configuration Option 2: Ollama (Example) ==
-        # To use Ollama (https://ollama.com/), make sure Ollama is running.
-        # 1. Run `ollama serve` in your terminal.
-        # 2. Ensure the model you want to use is downloaded (e.g., `ollama pull llama3`).
-        # 3. Uncomment and modify the block below:
-        # {
-        #     "model": "llama3", # Or the specific model tag, e.g., "mistral:7b-instruct-v0.2-q4_K_M"
-        #     "base_url": "http://localhost:11434/v1", # Default Ollama API endpoint
-        #     "api_key": "ollama", # AutoGen requires an api_key, "ollama" or "NA" usually works
-        #     # "api_type": "openai" # Often needed to specify compatibility
-        # },
-
+        #Ollama configuration - replace model name accordingly
+        #{
+        #"model": "openthinker:7b",
+        #    "api_type": "ollama",
+        #    "client_host": "http://127.0.0.1:11434"
+        #},
+        
         # == Add other configurations as needed ==
     ]
     # Optional: Add other LLMConfig parameters like 'temperature' if you want a default
