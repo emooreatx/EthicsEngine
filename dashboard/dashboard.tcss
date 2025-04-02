@@ -58,8 +58,9 @@ DataManagementView #data-tabs { margin-bottom: 1; }
 DataManagementView .note { margin-bottom: 1; }
 DataManagementView ContentSwitcher > Vertical { padding: 1; border: round $primary-darken-2; }
 DataManagementView ListView { height: 12; border: round $accent; margin-bottom: 1; }
-DataManagementView #data-actions { margin-top: 1; height: auto; align: center middle; }
-DataManagementView #data-actions Button { margin: 0 1; }
+/* Target the class used for button containers within each tab */
+DataManagementView .data-actions-container { margin-top: 1; height: auto; align: center middle; }
+DataManagementView .data-actions-container Button { margin: 0 1; }
 
 /* --- Results Browser View (#tab-results-browser > ResultsBrowserView) --- */
 ResultsBrowserView > Horizontal { grid-size: 2; grid-gutter: 1 2; height: 1fr; }
@@ -75,6 +76,34 @@ ResultsBrowserView > Horizontal { grid-size: 2; grid-gutter: 1 2; height: 1fr; }
 /* --- Log View Tab (#tab-log > LogView) --- */
 LogView { height: 1fr; }
 LogView #log-widget { border: round $primary; height: 1fr; }
+
+/* --- Config Editor View (#tab-config > ConfigEditorView) --- */
+ConfigEditorView #llm-config-input {
+    height: 8; /* Give the LLM config text area a height */
+    border: round $accent;
+    margin-bottom: 1;
+}
+ConfigEditorView #reasoning-specs-input {
+    height: 8; /* Give the reasoning specs text area a height */
+    border: round $accent;
+    margin-bottom: 1;
+}
+ConfigEditorView #config-editor-scroll {
+    /* Ensure the scroll container itself can grow */
+    height: 1fr;
+}
+ConfigEditorView .config-label {
+    margin-top: 1; /* Add some space above labels */
+}
+ConfigEditorView #status-message {
+    height: auto;
+    margin-top: 1;
+}
+ConfigEditorView .button-container {
+    margin-top: 1;
+    height: auto;
+}
+
 
 /* --- Modal Screens --- */
 CreateItemScreen, EditItemScreen { align: center middle; }

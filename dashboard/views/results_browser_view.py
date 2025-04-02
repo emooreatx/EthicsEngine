@@ -183,14 +183,19 @@ class ResultsBrowserView(Static):
                  else:
                      val_str = self._truncate(str(value), 100)
 
-                 # --- FIX: Escape brackets for Textual markup ---
-                 # Escape brackets before adding to the final string
-                 val_str = str(val_str).replace("[", r"\[").replace("]", r"\]")
+                 # Brackets are intentionally NOT escaped here as the target Static widget uses markup=False.
+                 # If markup=True is used later, escaping might be needed for complex values,
+                 # but simple '[]' or '{}' should render correctly.
                  # Also escape other potential markup characters if necessary, e.g., '*'
-                 # val_str = val_str.replace("*", r"\*") # Uncomment if needed
+                 # val_str = str(val_str).replace("*", r"\*") # Uncomment if needed
 
              except Exception as fmt_e:
                  self.log.error(f"Error formatting metadata key '{key}': {fmt_e}")
+
+             # --- MODIFIED: Skip empty top-level tags/criteria ---
+             if key in ['tags', 'evaluation_criteria'] and not value:
+                 self.log.debug(f"Skipping empty metadata key: {key}")
+                 continue
 
              # Use bold for keys via Markdown syntax if passing to Markdown widget
              # If passing to Static(markup=True), use [b]key[/b]
@@ -279,8 +284,9 @@ class ResultsBrowserView(Static):
             except Exception as table_e:
                 self.log.error(f"Failed to add row to table (key={key}): {table_e}", exc_info=True)
 
-        if run_type == "benchmark" and isinstance(results_data, list):
-            self.log.debug("Populating benchmark results table")
+        # --- MODIFIED: Added "benchmark_set" and "benchmark_single" to handle list-based benchmark results ---
+        if run_type in ["benchmark", "benchmark_set", "benchmark_single"] and isinstance(results_data, list):
+            self.log.debug(f"Populating {run_type} results table") # Log the actual type
             results_table.add_columns("QID", "Question", "Expected", "Response", "Judgement")
             results_table.fixed_columns = 1
             for item in results_data:
@@ -292,17 +298,31 @@ class ResultsBrowserView(Static):
                      add_row_safely(results_table, qid, self._truncate(item.get("question", "")), self._truncate(item.get("expected_answer", "")), self._truncate(response), self._truncate(judgement), key=str(qid))
                 else: self.log.warning(f"Skipping non-dict item in benchmark results: {item}")
 
-        elif run_type == "scenario_pipeline" and isinstance(results_data, list):
-            self.log.debug("Populating scenario pipeline results table")
-            results_table.add_columns("ID", "Scenario Text", "Planner", "Executor", "Tags")
+        # --- MODIFIED: Added "scenario_set" and "scenario_pipeline_single" to handle list-based results ---
+        elif run_type in ["scenario_pipeline", "scenario_set", "scenario_pipeline_single"] and isinstance(results_data, list):
+            self.log.debug(f"Populating {run_type} results table") # Log the actual type
+            results_table.add_columns("ID", "Scenario Text", "Planner", "Executor", "Tags", "Eval Criteria") # Added Eval Criteria
             results_table.fixed_columns = 1
             for item in results_data:
                 if isinstance(item, dict):
                      sid = item.get("scenario_id", "N/A")
                      tags_list = item.get("tags", [])
                      tags_str = ", ".join(map(str, tags_list)) if tags_list else ""
-                     add_row_safely(results_table, sid, self._truncate(item.get("scenario_text", "")), self._truncate(item.get("planner_output", "")), self._truncate(item.get("executor_output", "")), self._truncate(tags_str), key=str(sid))
-                else: self.log.warning(f"Skipping non-dict item in scenario_pipeline results: {item}")
+                     # Format eval criteria for table summary
+                     eval_criteria = item.get("evaluation_criteria", {})
+                     pos_count = len(eval_criteria.get("positive", []))
+                     neg_count = len(eval_criteria.get("negative", []))
+                     eval_str = f"P:{pos_count}, N:{neg_count}" if pos_count or neg_count else ""
+
+                     add_row_safely(results_table,
+                                    sid,
+                                    self._truncate(item.get("scenario_text", "")),
+                                    self._truncate(item.get("planner_output", "")),
+                                    self._truncate(item.get("executor_output", "")),
+                                    self._truncate(tags_str),
+                                    eval_str, # Added eval criteria summary
+                                    key=str(sid))
+                else: self.log.warning(f"Skipping non-dict item in {run_type} results: {item}")
 
         elif run_type == "scenario" and isinstance(results_data, dict):
              self.log.debug("Populating old scenario format results table")
@@ -369,21 +389,25 @@ class ResultsBrowserView(Static):
              return
 
         try:
-            if run_type in ["benchmark", "scenario_pipeline"] and isinstance(self._current_results_list, list):
-                key_to_match = "question_id" if run_type == "benchmark" else "scenario_id"
+            # --- MODIFIED: Added single run types to the list for list-based lookup ---
+            if run_type in ["benchmark", "benchmark_set", "benchmark_single", "scenario_pipeline", "scenario_set", "scenario_pipeline_single"] and isinstance(self._current_results_list, list):
+                # Determine the correct key based on whether it's a benchmark or scenario type
+                key_to_match = "question_id" if run_type in ["benchmark", "benchmark_set", "benchmark_single"] else "scenario_id"
                 self.log.debug(f"Searching for item with {key_to_match} == '{lookup_key}' in list of {len(self._current_results_list)} items")
                 found = False
                 for item in self._current_results_list:
                      if isinstance(item, dict):
                           item_key_val = item.get(key_to_match)
-                          if str(item_key_val) == lookup_key:
+                          # Ensure comparison is robust (e.g., handle potential type differences if key isn't always string)
+                          if str(item_key_val) == str(lookup_key):
                               selected_item_data = item
                               self.log.info(f"Found matching item data for key '{lookup_key}'")
                               found = True
                               break
                 if not found: self.log.warning(f"Item with {key_to_match} == '{lookup_key}' not found in list.")
-            else:
-                 self.log.warning(f"Cannot determine how to find selected item details. run_type='{run_type}', results type='{type(self._current_results_list)}'")
+            # --- MODIFIED: Removed the 'else' block that logged a warning for valid run_types like 'scenario' ---
+            # else:
+            #      self.log.warning(f"Cannot determine how to find selected item details. run_type='{run_type}', results type='{type(self._current_results_list)}'")
 
         except Exception as find_e:
              self.log.error(f"Error occurred while searching for selected item data: {find_e}", exc_info=True)
@@ -394,22 +418,26 @@ class ResultsBrowserView(Static):
             self.log.info(f"Formatting details for key '{lookup_key}'...")
             detail_md = ""
             try:
+                # --- MODIFIED: Determine item_id_key based on run_type including scenario_set ---
                 item_id_key = "question_id" if run_type == "benchmark" else "scenario_id"
                 item_id_val = selected_item_data.get(item_id_key, lookup_key)
                 detail_md = f"### Details for ID: {escape(str(item_id_val))}\n\n---\n"
 
                 for key, value in selected_item_data.items():
-                    value_str = str(value)
+                    value_str = str(value) # Default string representation
                     key_title = escape(key.replace('_', ' ').title())
 
+                    # --- MODIFIED: Handle formatting based on run_type and key ---
                     if key == "output" and run_type == "benchmark" and isinstance(value, dict):
                          detail_md += f"**{key_title}:**\n"
                          detail_md += f"  - **Answer:** {escape(value.get('answer', 'N/A'))}\n"
                          detail_md += f"  - **Judgement:** {escape(value.get('judgement', 'N/A'))}\n"
-                    elif key == "decision_tree" and run_type == "scenario_pipeline" and isinstance(value, dict):
+                    # --- MODIFIED: Include scenario_set for decision_tree formatting ---
+                    elif key == "decision_tree" and run_type in ["scenario_pipeline", "scenario_set"] and isinstance(value, dict):
                          # Format large dicts like decision_tree as JSON block
                          detail_md += f"**{key_title}:**\n```json\n{escape(json.dumps(value, indent=2))}\n```\n"
-                    elif key == "evaluation_criteria" and isinstance(value, dict):
+                    # --- MODIFIED: Include scenario_set for evaluation_criteria formatting ---
+                    elif key == "evaluation_criteria" and run_type in ["scenario_pipeline", "scenario_set"] and isinstance(value, dict):
                          detail_md += f"**{key_title}:**\n"
                          pos = value.get("positive", [])
                          neg = value.get("negative", [])
@@ -434,4 +462,3 @@ class ResultsBrowserView(Static):
         else:
             self.log.info(f"No details found or data is not a dict for key '{lookup_key}'.")
             detail_markdown.update(f"Details not found or invalid format for key: {escape(lookup_key)}")
-

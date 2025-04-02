@@ -1,0 +1,31 @@
+{
+  "llm_config_list": [
+    {
+      "model": "gpt-4o-mini",
+      "api_key": "env:OPENAI_API_KEY" 
+    }
+  ],
+  "concurrency": 10,
+  "log_level": "INFO",
+  "agent_timeout": 300,
+  "reasoning_specs": {
+    "low": {
+      "description": "Low detail reasoning configuration",
+      "max_depth": 1,
+      "max_tokens": 50,
+      "temperature": 0.3
+    },
+    "medium": {
+      "description": "Medium detail reasoning configuration",
+      "max_depth": 2,
+      "max_tokens": 100,
+      "temperature": 0.5
+    },
+    "high": {
+      "description": "High detail reasoning configuration",
+      "max_depth": 3,
+      "max_tokens": 150,
+      "temperature": 0.7
+    }
+  }
+}

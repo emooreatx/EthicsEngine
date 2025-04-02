@@ -8,12 +8,12 @@ import argparse # Keep for standalone execution if needed
 
 # --- Import necessary components from the project ---
 try:
-    # Use the load_benchmarks from run_benchmarks which already extracts 'eval_data'
-    from run_benchmarks import load_benchmarks, run_benchmarks_async
-    from run_scenario_pipelines import load_scenarios, run_pipeline_for_scenario
-    from reasoning_agent import EthicsAgent
+    # Use the load_benchmarks from .run_benchmarks which already extracts 'eval_data'
+    from .run_benchmarks import load_benchmarks, run_benchmarks_async
+    from .run_scenario_pipelines import load_scenarios, run_pipeline_for_scenario
+    from reasoning_agent import EthicsAgent # This is in the root, so keep as is
     # Import AG2_REASONING_SPECS from config now
-    from config.config import logger, llm_config, AG2_REASONING_SPECS
+    from config.config import logger, llm_config, AG2_REASONING_SPECS # config is sibling to dashboard, keep as is
     from dashboard.dashboard_utils import save_json, load_json, SPECIES_FILE, GOLDEN_PATTERNS_FILE # Use dashboard's utils and constants
     # Define project base path relative to this script if needed, or assume execution from root
     _project_root = Path(__file__).parent.parent # Assumes this file is in dashboard/
@@ -24,8 +24,9 @@ try:
     DEFAULT_SCENARIOS_FILE = DEFAULT_DATA_DIR / "scenarios.json"
 
 except ImportError as e:
+    # Adjusted print message to reflect new location
     print(f"ImportError: {e}. Make sure this script is run within the EthicsEngine project structure, "
-          "or that the necessary modules (run_benchmarks, run_scenario_pipelines, etc.) are in the Python path.")
+          "or that the necessary modules (dashboard.run_benchmarks, dashboard.run_scenario_pipelines, etc.) are in the Python path.")
     # Define dummy functions/classes if imports fail, to prevent immediate crash
     logger = None
     def load_benchmarks(f): return []

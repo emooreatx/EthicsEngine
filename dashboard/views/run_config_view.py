@@ -85,6 +85,8 @@ class RunConfigurationView(Static):
             # --- Buttons ---
             with Horizontal(classes="button-group"):
                  yield Button("Run Single Item", id="run-analysis-button", variant="primary", classes="run-button")
+                 yield Button("Run Scenarios", id="run-scenarios-button", variant="success", classes="run-button") # New
+                 yield Button("Run Benchmarks", id="run-benchmarks-button", variant="success", classes="run-button") # New
                  yield Button("Run Full Set", id="run-full-set-button", variant="warning", classes="run-button")
             # --- End Buttons ---
 
@@ -163,4 +165,3 @@ class RunConfigurationView(Static):
                 options = [(f"Error: {error_msg}", "")]
         self.log.debug(f"View._get_task_item_options returning {len(options)} options.")
         return options
-

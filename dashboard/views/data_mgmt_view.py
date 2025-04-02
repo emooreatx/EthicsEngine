@@ -71,24 +71,33 @@ class DataManagementView(Static):
             Tab("Species", id="tab-Species"),
             id="data-tabs"
         )
-        yield Static(
-            "Note: Create/Edit/Delete for Scenarios requires further updates for the list format.",
-            classes="note text-muted"
-        )
+        # Removed the static note about pending updates as basic CRUD is implemented.
         with ContentSwitcher(initial=f"content-{self.current_data_tab.lower()}"):
              with Vertical(id="content-scenarios"):
                  yield Label("Scenarios List:", classes="title")
                  yield ListView(id="scenarios-list")
+                 # Add buttons within this pane
+                 with Horizontal(id="data-actions-scenarios", classes="data-actions-container"):
+                     yield Button("Create New", id="data-create-btn", variant="success")
+                     yield Button("Edit Selected", id="data-edit-btn", variant="primary")
+                     yield Button("Delete Selected", id="data-delete-btn", variant="error")
              with Vertical(id="content-models"):
                  yield Label("Models (Golden Patterns) List:", classes="title")
                  yield ListView(id="models-list")
+                 # Add buttons within this pane
+                 with Horizontal(id="data-actions-models", classes="data-actions-container"):
+                     yield Button("Create New", id="data-create-btn", variant="success")
+                     yield Button("Edit Selected", id="data-edit-btn", variant="primary")
+                     yield Button("Delete Selected", id="data-delete-btn", variant="error")
              with Vertical(id="content-species"):
                  yield Label("Species List:", classes="title")
                  yield ListView(id="species-list")
-        with Horizontal(id="data-actions"):
-            yield Button("Create New", id="data-create-btn", variant="success")
-            yield Button("Edit Selected", id="data-edit-btn", variant="primary")
-            yield Button("Delete Selected", id="data-delete-btn", variant="error")
+                 # Add buttons within this pane
+                 with Horizontal(id="data-actions-species", classes="data-actions-container"):
+                     yield Button("Create New", id="data-create-btn", variant="success")
+                     yield Button("Edit Selected", id="data-edit-btn", variant="primary")
+                     yield Button("Delete Selected", id="data-delete-btn", variant="error")
+        # Removed the original Horizontal(id="data-actions") container as buttons are now inside each tab's Vertical pane.
 
     def on_mount(self) -> None:
         """Called when the widget is mounted."""
@@ -223,17 +232,47 @@ class DataManagementView(Static):
             self.app.notify("Cannot save: Data source missing.", severity="error"); return
 
         if self.current_data_tab == "Scenarios":
-            # --- TODO: Implement Scenario List Create Logic ---
-            self.log.warning("Scenario list creation not implemented yet.")
-            self.app.notify("Scenario creation from UI not yet supported for list format.", severity="warning", timeout=6)
-            # Placeholder logic:
-            # 1. Check if ID (new_key) already exists in the list
-            # 2. Create new scenario dict: {"id": new_key, "prompt": new_value, "tags": [], "evaluation_criteria": {}}
+            if not isinstance(data_source, list):
+                self.app.notify("Cannot save: Scenario data source is not a list.", severity="error"); return
+
+            new_id = str(new_key).strip() # Treat key from modal as ID
+            new_prompt = str(new_value).strip()
+
+            if not new_id:
+                self.app.notify("Error: Scenario ID cannot be empty.", severity="error"); return
+
+            # 1. Check if ID already exists
+            if any(isinstance(item, dict) and item.get("id") == new_id for item in data_source):
+                self.app.notify(f"Error: Scenario ID '{new_id}' already exists.", severity="error"); return
+
+            # 2. Create new scenario dict (basic structure)
+            new_scenario = {
+                "id": new_id,
+                "prompt": new_prompt,
+                "tags": [], # Default empty tags
+                "evaluation_criteria": {} # Default empty criteria
+            }
+
             # 3. Append to self.scenarios list (data_source)
-            # 4. save_json(file_path, data_source)
-            # 5. self._update_list_view()
+            data_source.append(new_scenario)
+
+            # 4. Save the updated list
+            save_json(file_path, data_source)
+            self.app.notify(f"Created Scenario '{new_id}'.", title="Success")
+
+            # 5. Update the list view
+            self._update_list_view()
+
             # 6. Try to select the new item
-            pass
+            try:
+                for index, item in enumerate(list_view.children):
+                    if isinstance(item, ListItem) and item.name == new_id:
+                        list_view.index = index
+                        list_view.scroll_to_index(index)
+                        break
+            except Exception as e:
+                self.log.warning(f"Could not select newly created scenario '{new_id}': {e}")
+
         else: # Handle Models and Species (Dict format)
             if not isinstance(data_source, dict):
                  self.app.notify(f"Cannot save: Data source for {self.current_data_tab} is not a dictionary.", severity="error"); return
@@ -260,16 +299,44 @@ class DataManagementView(Static):
             self.app.notify("Cannot save: Data source missing.", severity="error"); return
 
         if self.current_data_tab == "Scenarios":
-             # --- TODO: Implement Scenario List Edit Logic ---
-             self.log.warning("Scenario list editing not implemented yet.")
-             self.app.notify("Scenario editing from UI not yet supported for list format.", severity="warning", timeout=6)
-             # Placeholder logic:
-             # 1. Find the dictionary in the list `data_source` where item['id'] == item_key
-             # 2. If found, update its 'prompt' field (or others if modal is enhanced) to new_value
-             # 3. save_json(file_path, data_source)
-             # 4. self._update_list_view()
-             # 5. Try to re-select the edited item
-             pass
+            if not isinstance(data_source, list):
+                self.app.notify("Cannot save: Scenario data source is not a list.", severity="error"); return
+
+            scenario_id_to_edit = str(item_key) # item_key is the ID for scenarios
+            updated_prompt = str(new_value).strip()
+
+            # 1. Find the dictionary in the list
+            found_scenario = None
+            for scenario in data_source:
+                if isinstance(scenario, dict) and scenario.get("id") == scenario_id_to_edit:
+                    found_scenario = scenario
+                    break
+
+            if found_scenario is None:
+                self.app.notify(f"Error: Scenario ID '{scenario_id_to_edit}' not found.", severity="error")
+                self._update_list_view() # Refresh in case list changed elsewhere
+                return
+
+            # 2. Update its 'prompt' field
+            #    (Future enhancement: Modal could return a dict of changes)
+            found_scenario["prompt"] = updated_prompt
+
+            # 3. Save the updated list
+            save_json(file_path, data_source)
+            self.app.notify(f"Updated Scenario '{scenario_id_to_edit}'.", title="Success")
+
+            # 4. Update the list view
+            self._update_list_view()
+
+            # 5. Try to re-select the edited item
+            try:
+                for index, item in enumerate(list_view.children):
+                    if isinstance(item, ListItem) and item.name == scenario_id_to_edit:
+                        list_view.index = index
+                        break
+            except Exception as e:
+                self.log.warning(f"Could not re-select edited scenario '{scenario_id_to_edit}': {e}")
+
         else: # Handle Models and Species (Dict format)
              if not isinstance(data_source, dict):
                   self.app.notify(f"Cannot save: Data source for {self.current_data_tab} is not a dictionary.", severity="error"); return
@@ -309,14 +376,10 @@ class DataManagementView(Static):
         selected_key_or_id = selected_list_item.name if selected_list_item else None
 
         if event.button.id == "data-create-btn":
-            # Note: CreateItemScreen expects key/value. Needs update for scenario list structure.
+            # Note: CreateItemScreen expects key/value. For Scenarios, use key=ID, value=Prompt.
+            # Future: A dedicated ScenarioCreateScreen might be better.
             if 'CreateItemScreen' in globals() and CreateItemScreen is not None:
-                 if self.current_data_tab == "Scenarios":
-                      self.app.notify("Scenario creation from UI needs update for list format.", severity="warning", timeout=6)
-                      # Optionally, could launch a simplified modal asking only for ID and Prompt
-                      # self.app.push_screen(CreateItemScreen(self.current_data_tab), self._create_callback)
-                 else:
-                      self.app.push_screen(CreateItemScreen(self.current_data_tab), self._create_callback)
+                 self.app.push_screen(CreateItemScreen(self.current_data_tab), self._create_callback)
             else: self.app.notify("Create action unavailable.", severity="error")
 
         elif event.button.id == "data-edit-btn":
@@ -328,19 +391,20 @@ class DataManagementView(Static):
                       if isinstance(data_source, list):
                            for item in data_source:
                                 if isinstance(item, dict) and item.get("id") == selected_key_or_id:
-                                     initial_value = item.get("prompt", "")
+                                     initial_value = item.get("prompt", "") # Get the prompt to pre-fill
                                      found = True
                                      break
                       if not found:
-                           self.app.notify(f"Cannot edit: Scenario ID '{selected_key_or_id}' not found.", severity="error"); return
-                      self.app.notify("Scenario editing from UI needs update for list format.", severity="warning", timeout=6)
-                      # Optionally, launch modal pre-filled with prompt
-                      # if 'EditItemScreen' in globals() and EditItemScreen is not None:
-                      #      self.app.push_screen( EditItemScreen(self.current_data_tab, selected_key_or_id, str(initial_value)), lambda value: self._edit_callback(value, selected_key_or_id) )
-                      # else: self.app.notify("Edit action unavailable.", severity="error")
+                           self.app.notify(f"Cannot edit: Scenario ID '{selected_key_or_id}' not found in current data.", severity="error"); return
+                      # Launch modal pre-filled with prompt
+                      # Note: EditItemScreen expects key/value. For Scenarios, key=ID, value=Prompt.
+                      # Future: A dedicated ScenarioEditScreen might be better.
+                      if 'EditItemScreen' in globals() and EditItemScreen is not None:
+                           self.app.push_screen( EditItemScreen(self.current_data_tab, selected_key_or_id, str(initial_value)), lambda value: self._edit_callback(value, selected_key_or_id) )
+                      else: self.app.notify("Edit action unavailable.", severity="error")
 
                  elif isinstance(data_source, dict) and selected_key_or_id in data_source:
-                      initial_value = data_source[selected_key_or_id]
+                      initial_value = data_source[selected_key_or_id] # Get the value for dict-based data
                       if 'EditItemScreen' in globals() and EditItemScreen is not None:
                            self.app.push_screen( EditItemScreen(self.current_data_tab, selected_key_or_id, str(initial_value)), lambda value: self._edit_callback(value, selected_key_or_id) )
                       else: self.app.notify("Edit action unavailable.", severity="error")
@@ -351,19 +415,43 @@ class DataManagementView(Static):
 
         elif event.button.id == "data-delete-btn":
             if selected_key_or_id:
+                 list_view, data_source, file_path = self._get_active_listview_and_data() # Re-fetch needed info
+                 if data_source is None or file_path is None:
+                     self.app.notify("Cannot delete: Data source or file path missing.", severity="error"); return
+
                  if self.current_data_tab == "Scenarios":
-                     # --- TODO: Implement Scenario List Delete Logic ---
-                     self.log.warning("Scenario list deletion not implemented yet.")
-                     self.app.notify("Scenario deletion from UI not yet supported for list format.", severity="warning", timeout=6)
-                     # Placeholder logic:
-                     # 1. Find index of item in list `data_source` where item['id'] == selected_key_or_id
-                     # 2. If found, remove item using `data_source.pop(index)`
-                     # 3. save_json(file_path, data_source)
-                     # 4. self._update_list_view()
-                     pass
+                     if not isinstance(data_source, list):
+                         self.app.notify("Cannot delete: Scenario data source is not a list.", severity="error"); return
+
+                     scenario_id_to_delete = str(selected_key_or_id)
+                     initial_length = len(data_source)
+                     original_index = list_view.index
+
+                     # 1. Find index and remove item
+                     index_to_remove = -1
+                     for i, item in enumerate(data_source):
+                         if isinstance(item, dict) and item.get("id") == scenario_id_to_delete:
+                             index_to_remove = i
+                             break
+
+                     if index_to_remove != -1:
+                         # 2. Remove item using pop
+                         data_source.pop(index_to_remove)
+                         # 3. Save the updated list
+                         save_json(file_path, data_source)
+                         self.app.notify(f"Deleted Scenario '{scenario_id_to_delete}'.", title="Success")
+                         # 4. Update the list view
+                         self._update_list_view()
+                         # Try to keep selection reasonable
+                         if list_view.is_valid_index(original_index): list_view.index = original_index
+                         elif list_view.is_valid_index(original_index - 1): list_view.index = original_index - 1
+
+                     else:
+                         self.app.notify(f"Error: Scenario ID '{scenario_id_to_delete}' not found for deletion.", severity="error")
+                         self._update_list_view() # Refresh in case list changed
+
                  else: # Handle Models and Species (Dict format)
                      # Use the existing dashboard_actions helper for dicts
-                     handle_data_delete(self.app, self.current_data_tab, selected_key_or_id)
+                     handle_data_delete(self.app, self.current_data_tab, selected_key_or_id) # This likely calls save_json and _update_list_view internally via app methods
             else:
                  self.app.notify("Please select an item to delete.", severity="warning")
-

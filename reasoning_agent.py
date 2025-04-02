@@ -111,31 +111,41 @@ class EthicsAgent:
 
     async def run_async(self, prompt_data: dict, prompt_id: str) -> dict[str, Any]:
         start_time = time.monotonic()
-        logger.info(f"Task {prompt_id}: Entered run_async.")
+        # logger.info(f"Task {prompt_id}: Entered run_async.") # Commented out
         prompt_text = prompt_data.get("prompt", "")
         user_prompt = ( f"Context: You are a leader for the Species: {self.species['name']}.\nTask: {prompt_text}" )
-        logger.info(f"Task {prompt_id}: Running agent model {self.golden_pattern}, level {self.reasoning_level}")
+        # logger.info(f"Task {prompt_id}: Running agent model {self.golden_pattern}, level {self.reasoning_level}") # Commented out
 
         final_response = ""; tree_dict = None; captured_output = ""; dummy_io = io.StringIO()
 
         try:
-            logger.debug(f"Task {prompt_id}: Attempting semaphore acquire (Active: {semaphore.active_count}/{semaphore.capacity}, T={time.monotonic() - start_time:.2f}s)")
+            # logger.debug(f"Task {prompt_id}: Attempting semaphore acquire (Active: {semaphore.active_count}/{semaphore.capacity}, T={time.monotonic() - start_time:.2f}s)") # Commented out
             sema_acquire_start = time.monotonic()
             # Use the imported semaphore (which is now a TrackedSemaphore)
             async with semaphore:
                  sema_acquire_end = time.monotonic()
-                 logger.info(f"Task {prompt_id}: Semaphore acquired (wait={sema_acquire_end - sema_acquire_start:.2f}s, Active: {semaphore.active_count}/{semaphore.capacity}, T={sema_acquire_end - start_time:.2f}s). Running agent call in thread.")
+                 # logger.info(f"Task {prompt_id}: Semaphore acquired (wait={sema_acquire_end - sema_acquire_start:.2f}s, Active: {semaphore.active_count}/{semaphore.capacity}, T={sema_acquire_end - start_time:.2f}s). Running agent call in thread.") # Commented out
                  # Redirect stdout/stderr to capture potential noise from underlying libraries
                  with redirect_stdout(dummy_io), redirect_stderr(dummy_io):
                       thread_call_start = time.monotonic()
-                      # Run the potentially long-running generate_reply in a separate thread
-                      reply = await asyncio.to_thread(
-                          self._agent.generate_reply,
-                          messages=[{"role": "user", "content": user_prompt}],
-                          sender=None # Assuming direct call, no sender agent needed here
-                      )
+                      # --- MODIFICATION: Add Timeout ---
+                      try:
+                          # Run the potentially long-running generate_reply in a separate thread with timeout
+                          reply = await asyncio.wait_for(
+                              asyncio.to_thread(
+                                  self._agent.generate_reply,
+                                  messages=[{"role": "user", "content": user_prompt}],
+                                  sender=None # Assuming direct call, no sender agent needed here
+                              ),
+                              timeout=AGENT_TIMEOUT # Use timeout from config
+                          )
+                      except asyncio.TimeoutError:
+                          logger.error(f"Task {prompt_id}: Agent call timed out after {AGENT_TIMEOUT} seconds.")
+                          # Re-raise the TimeoutError to be caught by the outer exception handler below
+                          raise
+                      # --- END MODIFICATION ---
                       thread_call_end = time.monotonic()
-                      logger.info(f"Task {prompt_id}: asyncio.to_thread completed (duration={thread_call_end - thread_call_start:.2f}s, T={thread_call_end - start_time:.2f}s)")
+                      # logger.info(f"Task {prompt_id}: asyncio.to_thread completed (duration={thread_call_end - thread_call_start:.2f}s, T={thread_call_end - start_time:.2f}s)") # Commented out
 
                       # Process the reply
                       chat_result = reply # generate_reply usually returns the message content directly
@@ -144,18 +154,23 @@ class EthicsAgent:
                       # Attempt to get the reasoning tree if available
                       reasoning_tree_root: Optional[ThinkNode] = getattr(self._agent, '_root', None)
                       if reasoning_tree_root:
-                           logger.debug(f"Task {prompt_id}: Reasoning tree found. Converting to dict.")
+                           # logger.debug(f"Task {prompt_id}: Reasoning tree found. Converting to dict.") # Commented out
                            tree_dict = reasoning_tree_root.to_dict()
                       else:
                            logger.warning(f"Task {prompt_id}: No reasoning tree (_root attribute) found on agent instance.")
 
             # Semaphore automatically released by context manager exit
             sema_release_time = time.monotonic()
-            logger.info(f"Task {prompt_id}: Semaphore released (Active: {semaphore.active_count}/{semaphore.capacity}, T={sema_release_time - start_time:.2f}s). Reply length: {len(final_response)}")
+            # logger.info(f"Task {prompt_id}: Semaphore released (Active: {semaphore.active_count}/{semaphore.capacity}, T={sema_release_time - start_time:.2f}s). Reply length: {len(final_response)}") # Commented out
             captured_output = dummy_io.getvalue()
-            if captured_output:
-                logger.debug(f"Task {prompt_id}: Captured stdio during agent run: {captured_output}")
+            # if captured_output: # Commented out debug log for captured output
+                # logger.debug(f"Task {prompt_id}: Captured stdio during agent run: {captured_output}")
 
+        except asyncio.TimeoutError: # Specific handling for timeout
+             logger.error(f"Task {prompt_id}: Agent execution timed out.")
+             final_response = f"Error: Agent execution timed out after {AGENT_TIMEOUT} seconds."
+             captured_output = dummy_io.getvalue() # Capture output before timeout handling
+             if captured_output: logger.error(f"Task {prompt_id}: Captured stdio before timeout: {captured_output}")
         except Exception as e:
             logger.error(f"Error during agent execution for task {prompt_id}: {e}", exc_info=True)
             final_response = f"Error: Agent execution failed - {e}"
@@ -165,7 +180,7 @@ class EthicsAgent:
                 logger.error(f"Task {prompt_id}: Captured stdio before error: {captured_output}")
 
         end_time = time.monotonic()
-        logger.info(f"Task {prompt_id}: Exiting run_async (Total time={end_time - start_time:.2f}s)")
+        # logger.info(f"Task {prompt_id}: Exiting run_async (Total time={end_time - start_time:.2f}s)") # Commented out
         return {
             "prompt_id": prompt_id,
             "result": final_response,
