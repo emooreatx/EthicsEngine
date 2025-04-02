@@ -186,6 +186,7 @@ class TrackedSemaphore:
         self._capacity = value
         self._semaphore = asyncio.Semaphore(value)
         self._active_count = 0
+        self._waiting_count = 0 # Added waiting counter
         self._count_lock = threading.Lock()
         # Use the specific config logger for this message
         # config_logger.info(f"Initialized TrackedSemaphore with capacity {self._capacity}") # Removed
@@ -199,15 +200,33 @@ class TrackedSemaphore:
     def active_count(self) -> int:
         """Returns the current number of active acquirers (thread-safe)."""
         with self._count_lock:
-            return self._active_count
+             return self._active_count
+
+    @property
+    def waiting_count(self) -> int:
+        """Returns the current number of waiting tasks (thread-safe)."""
+        with self._count_lock:
+            return self._waiting_count
 
     async def acquire(self) -> bool:
-        await self._semaphore.acquire()
-        with self._count_lock:
-            self._active_count += 1
-            # Use config_logger for debug messages internal to this class if desired
-            # config_logger.debug(f"Task acquired, active count now: {self._active_count}") # Removed
-        return True
+         # Increment waiting count *before* awaiting
+         with self._count_lock:
+             self._waiting_count += 1
+         try:
+             await self._semaphore.acquire()
+             # Decrement waiting and increment active *after* acquiring
+             with self._count_lock:
+                 self._waiting_count -= 1
+                 self._active_count += 1
+         except Exception:
+             # Ensure waiting count is decremented even if acquire fails/is cancelled
+             with self._count_lock:
+                 self._waiting_count -= 1
+             raise # Re-raise the exception
+
+         # Use config_logger for debug messages internal to this class if desired
+         # config_logger.debug(f"Task acquired, active count now: {self._active_count}") # Removed
+         return True
 
     def release(self) -> None:
         should_release_sema = False
@@ -253,4 +272,4 @@ AGENT_TIMEOUT = settings["agent_timeout"]
 # config_logger.info(f"Agent timeout set to: {AGENT_TIMEOUT}") # Log with config_logger # Removed
 # --- End Other Constants ---
 
-# config_logger.info("Configuration loading process complete.") # Log with config_logger # Removed
+# config_logger.info(f"Configuration loading process complete.") # Log with config_logger # Removed

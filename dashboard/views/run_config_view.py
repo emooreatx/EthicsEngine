@@ -1,9 +1,9 @@
-# EthicsEngine/dashboard/views/run_config_view.py
+ # EthicsEngine/dashboard/views/run_config_view.py
 import json
 import logging
 from pathlib import Path
 from textual.app import ComposeResult
-from textual.containers import Vertical, Horizontal
+from textual.containers import Vertical, Horizontal, VerticalScroll # Added VerticalScroll
 from textual.widgets import (
     Label,
     Button,
@@ -11,6 +11,7 @@ from textual.widgets import (
     Select,
     RadioSet,
     RadioButton,
+    ListView, # Added ListView import
 )
 from textual.reactive import reactive
 from textual.markup import escape
@@ -63,41 +64,54 @@ class RunConfigurationView(Static):
         self._initial_task_item = current_task_item
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="run-config-vertical"):
-            # --- Configuration Selectors ---
-            yield Label("Species:")
-            yield Select(options=[(s, s) for s in self.species_options], value=self._initial_species, id="species-select", allow_blank=False, prompt="Select Species" if not self._initial_species else None)
-            yield Label("Reasoning Type (Model):")
-            yield Select(options=[(m, m) for m in self.model_options], value=self._initial_model, id="model-select", allow_blank=False, prompt="Select Model" if not self._initial_model else None)
-            yield Label("Reasoning Depth:")
-            initial_depth_value = self._initial_depth if self._initial_depth in self.depth_options else self.depth_options[0]
-            yield RadioSet(*[RadioButton(d, id=d, value=(d == initial_depth_value)) for d in self.depth_options], id="depth-radioset")
-            yield Label("Task Type:")
-            yield Select(options=[(t, t) for t in self.task_types], value=self._initial_task_type, id="task-type-select", allow_blank=False)
-            yield Label("Task Item:")
-            # Generate initial options based on the initial task type
-            initial_options = self._get_task_item_options(self._initial_task_type)
-            # Make sure initial_task_item is valid for initial_options
-            valid_initial_item = self._initial_task_item if any(opt[1] == self._initial_task_item for opt in initial_options) else None
-            yield Select(options=initial_options, value=valid_initial_item, id="task-item-select", allow_blank=False, prompt="Select Item" if not valid_initial_item else None)
-            # --- End Configuration Selectors ---
+        # --- Main Horizontal Layout ---
+        with Horizontal(id="run-config-horizontal"):
+            # --- Main Config Area (Left Side) ---
+            with Vertical(id="main-config-area"):
+                # --- Configuration Selectors ---
+                yield Label("Species:")
+                yield Select(options=[(s, s) for s in self.species_options], value=self._initial_species, id="species-select", allow_blank=False, prompt="Select Species" if not self._initial_species else None)
+                yield Label("Reasoning Type (Model):")
+                yield Select(options=[(m, m) for m in self.model_options], value=self._initial_model, id="model-select", allow_blank=False, prompt="Select Model" if not self._initial_model else None)
+                yield Label("Reasoning Depth:")
+                initial_depth_value = self._initial_depth if self._initial_depth in self.depth_options else self.depth_options[0]
+                yield RadioSet(*[RadioButton(d, id=d, value=(d == initial_depth_value)) for d in self.depth_options], id="depth-radioset")
+                yield Label("Task Type:")
+                yield Select(options=[(t, t) for t in self.task_types], value=self._initial_task_type, id="task-type-select", allow_blank=False)
+                yield Label("Task Item:")
+                # Generate initial options based on the initial task type
+                initial_options = self._get_task_item_options(self._initial_task_type)
+                # Make sure initial_task_item is valid for initial_options
+                valid_initial_item = self._initial_task_item if any(opt[1] == self._initial_task_item for opt in initial_options) else None
+                yield Select(options=initial_options, value=valid_initial_item, id="task-item-select", allow_blank=False, prompt="Select Item" if not valid_initial_item else None)
+                # --- End Configuration Selectors ---
 
-            # --- Buttons ---
-            with Horizontal(classes="button-group"):
-                 yield Button("Run Single Item", id="run-analysis-button", variant="primary", classes="run-button")
-                 yield Button("Run Scenarios", id="run-scenarios-button", variant="success", classes="run-button") # New
-                 yield Button("Run Benchmarks", id="run-benchmarks-button", variant="success", classes="run-button") # New
-                 yield Button("Run Full Set", id="run-full-set-button", variant="warning", classes="run-button")
-            # --- End Buttons ---
+                # --- Buttons ---
+                with Horizontal(classes="button-group"):
+                    yield Button("Run Single Item", id="run-analysis-button", variant="primary", classes="run-button")
+                    yield Button("Run Scenarios", id="run-scenarios-button", variant="success", classes="run-button") # New
+                    yield Button("Run Benchmarks", id="run-benchmarks-button", variant="success", classes="run-button") # New
+                # --- End Buttons ---
 
-            # --- Status Displays ---
-            status_text = f"Status: Ready"
-            # Check if app exists before accessing status, fallback if not
-            if hasattr(self, 'app') and self.app: status_text = f"Status: {self.app.run_status}"
-            yield Static(status_text, id="run-status")
-            # Display semaphore status (updated by the main app)
-            yield Static("Concurrency: N/A", id="semaphore-status-display", classes="text-muted")
-            # --- End Status Displays ---
+                # --- Status Displays ---
+                status_text = f"Status: Ready"
+                # Check if app exists before accessing status, fallback if not
+                if hasattr(self, 'app') and self.app: status_text = f"Status: {self.app.run_status}"
+                yield Static(status_text, id="run-status")
+                # Display semaphore status (updated by the main app)
+                yield Static("Concurrency: N/A", id="semaphore-status-display", classes="text-muted")
+                # --- End Status Displays ---
+            # --- End Main Config Area ---
+
+            # --- Queue Frame (Right Side) ---
+            with VerticalScroll(id="run-queue-frame"):
+                # Add the queue widgets here
+                yield Label("Task Queue", id="queue-title")
+                yield ListView(id="queue-list") # Ensure CSS targets this ID if needed
+                yield Button("Start Queue", id="start-queue-button", variant="success", disabled=False)
+                yield Button("Clear Queue", id="clear-queue-button", variant="error", disabled=False)
+            # --- End Queue Frame ---
+        # --- End Horizontal Layout ---
 
     def _truncate_prompt(self, text, length=40):
         # Helper to shorten long prompts for display

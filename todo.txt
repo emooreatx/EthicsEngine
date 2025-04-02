@@ -1,30 +1,4 @@
-1. Implement Live Log Tab:
-
-Goal: Add a new tab showing the scrolling content of app.log.
-Changes:
-dashboard/dashboard_views.py:
-Import Log widget from textual.widgets.
-Create a new class LogView(Static).
-In LogView.compose, yield a Log() widget.
-In LogView.on_mount, use self.set_interval to periodically call a method (e.g., _update_log). Keep track of the last read position in app.log.
-Implement _update_log to open app.log, seek to the last position, read new lines, update the position, and write lines to the Log widget using .write_line().
-dashboard/interactive_dashboard.py:
-Import LogView.
-Add a new TabPane("Log Viewer", id="tab-log") inside the main TabbedContent.
-Mount an instance of LogView inside this new TabPane.
-2. Implement "Full Run" Trigger:
-
-Goal: Add button(s) to run all benchmarks or all scenario pipelines, generating result files.
-Changes:
-dashboard/dashboard_views.py:
-In RunConfigurationView.compose, add one or two new Button widgets (e.g., "Run All Scenarios", "Run All Benchmarks") near the existing "Run Analysis" button. Give them unique IDs (e.g., "run-all-scenarios-button").
-interactive_dashboard.py:
-Import the main functions (or equivalent entry points) from run_benchmarks.py and run_scenario_pipelines.py. Self-correction: These scripts might need modification if their main functions rely solely on argparse. Alternatively, import the core async functions they use. Let's assume we import run_benchmarks.run_benchmarks and run_scenario_pipelines.main.
-Create new async def action_run_all_scenarios(self): and async def action_run_all_benchmarks(self): methods.
-Inside these methods:
-Set self.run_status = "Running Full Scenarios..." (or similar). Show loading indicator. Disable buttons.
-Define a synchronous wrapper function (e.g., sync_run_all_scenarios) that calls the imported backend function (potentially using asyncio.run if the backend function is async, like run_scenario_pipelines.main). Crucially, ensure arguments like species, model, depth from the UI state (self.selected_species etc.) can be passed to these backend functions if needed, which might require modifying those backend scripts.
-Run the synchronous wrapper in a thread: await asyncio.to_thread(sync_run_all_scenarios)
-Update self.run_status = "Full Run Completed". Re-enable buttons. Hide loading indicator.
-Optionally: Notify the user and trigger a refresh of the ResultsBrowserView's file list (self.query_one(ResultsBrowserView)._populate_file_list()).
-In on_button_pressed, add conditions for the new button IDs to call asyncio.create_task(self.action_run_all_...).
+- fix visibility of the header bar with app name and time
+- add tree view to the results browser
+- add support for submitter name and email in results files
+- add splash animation

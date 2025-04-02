@@ -2,10 +2,10 @@
 
 /* --- Base Screen & Layout --- */
 Screen {
-    background: $surface-darken-1;
+    background: $panel; /* Reverted from $surface-darken-1 */
     color: $text;
-    layers: base loading footer;
-    layout: vertical;
+    layers: base footer loading; /* Corrected layer order */
+    layout: vertical; /* Restored */
 }
 
 Header {
@@ -22,6 +22,7 @@ Footer {
 TabbedContent {
     layer: base;
     height: 1fr; /* Ensure it takes available vertical space */
+    margin-top: 1; /* Push tabs down one line */
 }
 
 /* --- REMOVED custom Tabs, Tab, Tab.--current styles --- */
@@ -40,14 +41,33 @@ TabPane {
 
 
 /* --- Run Configuration View (#tab-run > RunConfigurationView) --- */
-RunConfigurationView { height: auto; }
-#run-config-vertical { border: round $primary; padding: 1 2; margin-bottom: 1; height: auto; }
-#run-config-vertical Label { margin-bottom: 1; color: $text-muted; }
-#run-config-vertical Select { margin-bottom: 1; width: 60%; max-width: 50; }
-#run-config-vertical RadioSet { width: auto; height: auto; margin-bottom: 1; margin-left: 2; }
-RunConfigurationView .button-group { width: 100%; height: auto; align: left middle; margin-top: 1; }
-RunConfigurationView .run-button { width: auto; margin-right: 2; }
-#run-status { margin-top: 1; color: $text-muted; height: auto; }
+RunConfigurationView { height: 1fr; } /* Allow view to fill height */
+#run-config-horizontal { height: 1fr; } /* Make horizontal layout fill height */
+
+/* Left side: Main config area */
+#main-config-area {
+    width: 65%; /* Adjust width as needed */
+    height: 100%;
+    border: round $primary; /* Keep border here */
+    padding: 1 2;
+    margin-right: 1; /* Space between left and right */
+    overflow-y: auto; /* Allow scrolling if content overflows */
+}
+#main-config-area Label { margin-bottom: 1; color: $text-muted; }
+#main-config-area Select { margin-bottom: 1; width: 80%; max-width: 60; } /* Adjusted width */
+#main-config-area RadioSet { width: auto; height: auto; margin-bottom: 1; margin-left: 2; }
+#main-config-area .button-group { width: 100%; height: auto; align: left middle; margin-top: 1; }
+#main-config-area .run-button { width: auto; margin-right: 2; }
+#main-config-area #run-status { margin-top: 1; color: $text-muted; height: auto; }
+#main-config-area #semaphore-status-display { height: auto; }
+
+/* Right side: Queue frame */
+#run-queue-frame {
+    width: 35%; /* Adjust width as needed */
+    height: 100%; /* Fill vertical space */
+    border: round $accent; /* Make it visible */
+    padding: 1; /* Add internal padding */
+}
 
 /* --- Message on Agent Run Tab --- */
 #run-tab-message { margin-top: 2; padding: 1; border: round $accent 50%; height: auto; }
@@ -68,6 +88,7 @@ ResultsBrowserView > Horizontal { grid-size: 2; grid-gutter: 1 2; height: 1fr; }
 #results-browser-list { height: 1fr; border: round $accent; }
 #results-content-container { width: 65fr; height: 100%; overflow-y: auto; border: round $primary-darken-1; padding: 0 1; }
 #results-browser-metadata { height: auto; margin-bottom: 1;}
+#upload-aws-button { margin-top: 1; width: auto; } /* Added style for upload button */
 #results-browser-table-title { height: auto; }
 #results-browser-table { height: 15; max-height: 50%; margin-bottom: 1; }
 #results-browser-detail-title { height: auto; }
@@ -115,5 +136,84 @@ CreateItemScreen Horizontal, EditItemScreen Horizontal { align: right middle; he
 CreateItemScreen Horizontal Button, EditItemScreen Horizontal Button { margin-left: 2; }
 
 /* --- Loading Indicator (Positioned via Layer) --- */
-#loading-layer-container { layer: loading; align: right top; width: 100%; height: 1; margin-top: 0; }
+#loading-layer-container {
+    layer: loading; /* Ensure it's on the top layer */
+    align: right top; /* Align container content (indicator) */
+    width: 100%;
+    height: 1; /* Give it minimal height */
+    /* margin-top: 1; REMOVED - Rely on layer/alignment */
+}
 LoadingIndicator { width: auto; height: auto; margin: 0 1; color: $warning; }
+
+
+/* --- Queue Pane Styling (Now inside RunConfigurationView) --- */
+
+/* Rules for #main-layout-container, #main-content-area, #queue-pane removed as they are no longer used for top-level layout */
+
+#queue-title {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    margin-bottom: 1;
+    height: auto; /* Ensure it doesn't take too much space */
+}
+
+#queue-list {
+    border: round $panel;
+    height: 1fr; /* Fill available vertical space */
+    margin-bottom: 1;
+}
+
+#start-queue-button, #clear-queue-button {
+    width: 100%;
+    margin-bottom: 1; /* Add space below buttons */
+}
+
+/* Queue Item Styling */
+#queue-list > ListItem {
+    padding: 0 1;
+    height: auto; /* Allow items to wrap if needed */
+    border: none; /* Remove default list item border if any */
+}
+#queue-list > ListItem:hover {
+    background: $accent-darken-1;
+}
+#queue-list > ListItem.pending {
+    /* Default appearance */
+    color: $text;
+}
+#queue-list > ListItem.running {
+    background: $accent-lighten-1;
+    color: $text;
+    text-style: bold;
+}
+#queue-list > ListItem.completed {
+    color: $success;
+}
+#queue-list > ListItem.error {
+    color: $error;
+    text-style: bold;
+}
+#queue-list > ListItem.warning {
+    color: $warning;
+}
+
+/* Adjust loading indicator to cover everything better */
+/* Commenting out full-screen overlay for debugging */
+/*
+#loading-layer-container {
+    layer: loading; /* High layer */
+    /* display: block; */ /* Removed, let align handle it */
+/*    width: 100%;
+    height: 100%;
+    align: center middle;
+    background: $surface 50%; /* Semi-transparent background */
+/* } */
+/* Keep basic indicator style */
+/*
+#loading-indicator {
+    width: auto;
+    height: auto;
+    color: $warning;
+}
+*/

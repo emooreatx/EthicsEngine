@@ -1,2 +1,4 @@
 textual>=0.47.1
 ag2[openai]>=0.8.4
+jsonschema>=4.0.0
+requests>=2.20.0

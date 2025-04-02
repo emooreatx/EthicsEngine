@@ -5,19 +5,26 @@ import logging
 from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Static, ListView, ListItem, Label, Markdown, DataTable
+from textual.widgets import Static, ListView, ListItem, Label, Markdown, DataTable, Button # Added Button
 from textual.reactive import reactive
 from textual.events import Mount
 from textual.message import Message
+from textual.binding import Binding # Added for potential future keybindings
 from textual.markup import escape
+import threading # Import the threading module
 
 # Import Helpers and Logger
+# Import Upload Function and RESULTS_DIR
 try:
     from ..dashboard_utils import load_json, RESULTS_DIR
+    from upload_results import upload_file_to_aws # Added upload function import
 except ImportError as e:
-    print(f"ERROR importing dashboard_utils: {e}")
+    print(f"ERROR importing dashboard_utils or upload_results: {e}")
     RESULTS_DIR = Path("./dummy_results")
     def load_json(path, default=None): return {"Error": f"Dummy load: {path}", "_load_error": True}
+    # Define a dummy upload function if import fails
+    def upload_file_to_aws(file_path: str) -> tuple[bool, str]:
+        return False, f"Error: Upload function not available (import failed). Path: {file_path}"
 
 try:
     from config.config import logger
@@ -48,6 +55,8 @@ class ResultsBrowserView(Static):
                 with VerticalScroll(id="results-content-container", classes="browser-content-container"):
                     # Use markup=False initially for metadata to avoid parsing issues before formatting
                     yield Static("Select a file to view metadata.", id="results-browser-metadata", classes="metadata-display", markup=False)
+                    # Add Upload Button below metadata
+                    yield Button("Upload to AWS", id="upload-aws-button", variant="primary", disabled=True, classes="upload-button")
                     yield Label("Results Summary:", classes="title", id="results-browser-table-title")
                     yield DataTable(id="results-browser-table", show_header=True, show_cursor=True, zebra_stripes=True)
                     yield Label("Details (Select Row Above):", classes="title", id="results-browser-detail-title")
@@ -215,6 +224,7 @@ class ResultsBrowserView(Static):
             table_title = self.query_one("#results-browser-table-title")
             detail_title = self.query_one("#results-browser-detail-title")
             content_scroll = self.query_one("#results-content-container", VerticalScroll)
+            upload_button = self.query_one("#upload-aws-button", Button) # Get the button
         except Exception as e:
             self.log.error(f"Cannot find results browser widgets in watcher: {e}", exc_info=True)
             return
@@ -225,6 +235,7 @@ class ResultsBrowserView(Static):
         metadata_display.update("") # Use update for Static
         table_title.display = False
         detail_title.display = False
+        upload_button.disabled = True # Disable button by default
         self._current_loaded_data = None
         self._current_results_list = None
 
@@ -244,11 +255,13 @@ class ResultsBrowserView(Static):
             error_msg = loaded_data.get("Error", "Could not load or parse file content") if isinstance(loaded_data, dict) else "Invalid file content"
             # Display error safely in the Static widget (markup=False)
             metadata_display.update(f"**Error Loading {filename}:**\n\n{error_msg}")
+            upload_button.disabled = True # Keep button disabled on error
             if hasattr(self, 'app') and self.app: self.app.notify(f"Error loading {filename}", severity="error", title="Load Error")
             return
         elif "metadata" not in loaded_data or "results" not in loaded_data:
             self.log.warning(f"File {filename} missing 'metadata' or 'results' key. Displaying raw content.")
             metadata_display.update(f"**Warning:** File format may be outdated or incorrect (missing 'metadata' or 'results'). Displaying raw content.")
+            upload_button.disabled = True # Keep button disabled on warning/format issue
             try:
                  formatted_json = json.dumps(loaded_data, indent=2)
                  # Use Markdown widget for potentially large raw JSON
@@ -258,11 +271,12 @@ class ResultsBrowserView(Static):
                  detail_markdown.update(f"```\nError displaying raw content: {escape(str(e))}\n```")
             return
 
-        # Process New Format (Metadata and Results)
+        # Process New Format (Metadata and Results) - Successful Load
         self.log.debug("Processing new file format (metadata and results)")
         metadata = loaded_data.get("metadata", {})
         results_data = loaded_data.get("results")
         self._current_results_list = results_data
+        upload_button.disabled = False # Enable button on successful load
 
         # 1. Update Metadata Display using helper
         # Pass the formatted string to the Static widget. Since markup=False, it's treated as plain text.
@@ -284,48 +298,58 @@ class ResultsBrowserView(Static):
             except Exception as table_e:
                 self.log.error(f"Failed to add row to table (key={key}): {table_e}", exc_info=True)
 
-        # --- MODIFIED: Added "benchmark_set" and "benchmark_single" to handle list-based benchmark results ---
+        # --- UPDATED: Handle benchmark results based on new schema ---
         if run_type in ["benchmark", "benchmark_set", "benchmark_single"] and isinstance(results_data, list):
-            self.log.debug(f"Populating {run_type} results table") # Log the actual type
-            results_table.add_columns("QID", "Question", "Expected", "Response", "Judgement")
+            self.log.debug(f"Populating {run_type} results table (New Schema)")
+            results_table.add_columns("Item ID", "Item Text", "Expected", "Response", "Judgement") # Updated headers
             results_table.fixed_columns = 1
             for item in results_data:
                 if isinstance(item, dict):
-                     qid = item.get("question_id", "N/A")
+                     item_id = item.get("item_id", "N/A")
+                     item_text = item.get("item_text", "")
                      output_data = item.get("output", {})
-                     response = output_data.get("answer", "")
-                     judgement = output_data.get("judgement", "")
-                     add_row_safely(results_table, qid, self._truncate(item.get("question", "")), self._truncate(item.get("expected_answer", "")), self._truncate(response), self._truncate(judgement), key=str(qid))
+                     eval_criteria = item.get("evaluation_criteria", {})
+                     expected = eval_criteria.get("expected_answer", "") # Get from eval_criteria
+                     response = output_data.get("answer", "") # Get from output
+                     judgement = output_data.get("judgement", "") # Get from output
+                     add_row_safely(results_table, item_id, self._truncate(item_text), self._truncate(expected), self._truncate(response), self._truncate(judgement), key=str(item_id))
                 else: self.log.warning(f"Skipping non-dict item in benchmark results: {item}")
 
-        # --- MODIFIED: Added "scenario_set" and "scenario_pipeline_single" to handle list-based results ---
+        # --- UPDATED: Handle scenario results based on new schema ---
         elif run_type in ["scenario_pipeline", "scenario_set", "scenario_pipeline_single"] and isinstance(results_data, list):
-            self.log.debug(f"Populating {run_type} results table") # Log the actual type
-            results_table.add_columns("ID", "Scenario Text", "Planner", "Executor", "Tags", "Eval Criteria") # Added Eval Criteria
+            self.log.debug(f"Populating {run_type} results table (New Schema)")
+            results_table.add_columns("Item ID", "Item Text", "Planner", "Executor", "Tags", "Eval Criteria") # Updated headers
             results_table.fixed_columns = 1
             for item in results_data:
                 if isinstance(item, dict):
-                     sid = item.get("scenario_id", "N/A")
+                     item_id = item.get("item_id", "N/A")
+                     item_text = item.get("item_text", "")
+                     output_data = item.get("output", {})
+                     eval_criteria = item.get("evaluation_criteria", {})
+                     planner_out = output_data.get("planner", "") # Get from output
+                     executor_out = output_data.get("executor", "") # Get from output
                      tags_list = item.get("tags", [])
                      tags_str = ", ".join(map(str, tags_list)) if tags_list else ""
-                     # Format eval criteria for table summary
-                     eval_criteria = item.get("evaluation_criteria", {})
-                     pos_count = len(eval_criteria.get("positive", []))
-                     neg_count = len(eval_criteria.get("negative", []))
+                     # Format eval criteria for table summary (access from eval_criteria)
+                     pos_list = eval_criteria.get("positive", [])
+                     neg_list = eval_criteria.get("negative", [])
+                     pos_count = len(pos_list)
+                     neg_count = len(neg_list)
                      eval_str = f"P:{pos_count}, N:{neg_count}" if pos_count or neg_count else ""
 
                      add_row_safely(results_table,
-                                    sid,
-                                    self._truncate(item.get("scenario_text", "")),
-                                    self._truncate(item.get("planner_output", "")),
-                                    self._truncate(item.get("executor_output", "")),
+                                    item_id,
+                                    self._truncate(item_text),
+                                    self._truncate(planner_out),
+                                    self._truncate(executor_out),
                                     self._truncate(tags_str),
-                                    eval_str, # Added eval criteria summary
-                                    key=str(sid))
+                                    eval_str,
+                                    key=str(item_id))
                 else: self.log.warning(f"Skipping non-dict item in {run_type} results: {item}")
 
+        # --- Keep old 'scenario' format handling for backward compatibility if needed ---
         elif run_type == "scenario" and isinstance(results_data, dict):
-             self.log.debug("Populating old scenario format results table")
+             self.log.warning("Populating old 'scenario' format results table (potentially deprecated)")
              results_table.add_columns("Role", "Scenario IDs")
              results_table.fixed_columns = 1
              for role, outcomes in results_data.items():
@@ -389,25 +413,27 @@ class ResultsBrowserView(Static):
              return
 
         try:
-            # --- MODIFIED: Added single run types to the list for list-based lookup ---
-            if run_type in ["benchmark", "benchmark_set", "benchmark_single", "scenario_pipeline", "scenario_set", "scenario_pipeline_single"] and isinstance(self._current_results_list, list):
-                # Determine the correct key based on whether it's a benchmark or scenario type
-                key_to_match = "question_id" if run_type in ["benchmark", "benchmark_set", "benchmark_single"] else "scenario_id"
+            # --- UPDATED: Always use 'item_id' for lookup in list-based results ---
+            if isinstance(self._current_results_list, list):
+                key_to_match = "item_id" # Always use item_id now
                 self.log.debug(f"Searching for item with {key_to_match} == '{lookup_key}' in list of {len(self._current_results_list)} items")
                 found = False
                 for item in self._current_results_list:
                      if isinstance(item, dict):
                           item_key_val = item.get(key_to_match)
-                          # Ensure comparison is robust (e.g., handle potential type differences if key isn't always string)
+                          # Ensure comparison is robust
                           if str(item_key_val) == str(lookup_key):
                               selected_item_data = item
                               self.log.info(f"Found matching item data for key '{lookup_key}'")
                               found = True
                               break
                 if not found: self.log.warning(f"Item with {key_to_match} == '{lookup_key}' not found in list.")
-            # --- MODIFIED: Removed the 'else' block that logged a warning for valid run_types like 'scenario' ---
-            # else:
-            #      self.log.warning(f"Cannot determine how to find selected item details. run_type='{run_type}', results type='{type(self._current_results_list)}'")
+            # Handle old 'scenario' format if necessary (assuming lookup_key is the role)
+            elif run_type == "scenario" and isinstance(self._current_results_list, dict):
+                 self.log.warning(f"Attempting lookup for old 'scenario' format with key '{lookup_key}' (details may be limited)")
+                 # For old format, details might not be structured per-item
+                 selected_item_data = {"role": lookup_key, "data": self._current_results_list.get(lookup_key)}
+
 
         except Exception as find_e:
              self.log.error(f"Error occurred while searching for selected item data: {find_e}", exc_info=True)
@@ -418,38 +444,53 @@ class ResultsBrowserView(Static):
             self.log.info(f"Formatting details for key '{lookup_key}'...")
             detail_md = ""
             try:
-                # --- MODIFIED: Determine item_id_key based on run_type including scenario_set ---
-                item_id_key = "question_id" if run_type == "benchmark" else "scenario_id"
-                item_id_val = selected_item_data.get(item_id_key, lookup_key)
-                detail_md = f"### Details for ID: {escape(str(item_id_val))}\n\n---\n"
+                # --- UPDATED: Use item_id consistently ---
+                item_id_val = selected_item_data.get("item_id", lookup_key) # Fallback to lookup_key if item_id missing
+                detail_md = f"### Details for Item ID: {escape(str(item_id_val))}\n\n---\n"
 
+                # --- UPDATED: Iterate through item keys and format based on new schema ---
                 for key, value in selected_item_data.items():
-                    value_str = str(value) # Default string representation
                     key_title = escape(key.replace('_', ' ').title())
 
-                    # --- MODIFIED: Handle formatting based on run_type and key ---
-                    if key == "output" and run_type == "benchmark" and isinstance(value, dict):
-                         detail_md += f"**{key_title}:**\n"
-                         detail_md += f"  - **Answer:** {escape(value.get('answer', 'N/A'))}\n"
-                         detail_md += f"  - **Judgement:** {escape(value.get('judgement', 'N/A'))}\n"
-                    # --- MODIFIED: Include scenario_set for decision_tree formatting ---
-                    elif key == "decision_tree" and run_type in ["scenario_pipeline", "scenario_set"] and isinstance(value, dict):
-                         # Format large dicts like decision_tree as JSON block
-                         detail_md += f"**{key_title}:**\n```json\n{escape(json.dumps(value, indent=2))}\n```\n"
-                    # --- MODIFIED: Include scenario_set for evaluation_criteria formatting ---
-                    elif key == "evaluation_criteria" and run_type in ["scenario_pipeline", "scenario_set"] and isinstance(value, dict):
-                         detail_md += f"**{key_title}:**\n"
-                         pos = value.get("positive", [])
-                         neg = value.get("negative", [])
-                         detail_md += f"  - Positive: {escape(', '.join(map(str, pos)))}\n"
-                         detail_md += f"  - Negative: {escape(', '.join(map(str, neg)))}\n"
+                    if key == "item_text":
+                        detail_md += f"**{key_title}:**\n```\n{escape(str(value))}\n```\n"
                     elif key == "tags" and isinstance(value, list):
-                         detail_md += f"**{key_title}:** {escape(', '.join(map(str, value)))}\n"
-                    elif isinstance(value, (list, dict)):
+                        detail_md += f"**{key_title}:** {escape(', '.join(map(str, value)))}\n"
+                    elif key == "evaluation_criteria" and isinstance(value, dict):
+                        detail_md += f"**{key_title}:**\n"
+                        if "expected_answer" in value: # Benchmark
+                            detail_md += f"  - Expected Answer: {escape(str(value.get('expected_answer')))}\n"
+                        if "positive" in value: # Scenario
+                            pos = value.get("positive", [])
+                            detail_md += f"  - Positive: {escape(', '.join(map(str, pos)))}\n"
+                        if "negative" in value: # Scenario
+                            neg = value.get("negative", [])
+                            detail_md += f"  - Negative: {escape(', '.join(map(str, neg)))}\n"
+                    elif key == "output" and isinstance(value, dict):
+                        detail_md += f"**{key_title}:**\n"
+                        if "answer" in value: # Benchmark
+                            detail_md += f"  - Answer: {escape(str(value.get('answer')))}\n"
+                        if "judgement" in value: # Benchmark
+                            detail_md += f"  - Judgement: {escape(str(value.get('judgement')))}\n"
+                        if "planner" in value: # Scenario
+                            detail_md += f"  - Planner:\n```\n{escape(str(value.get('planner')))}\n```\n"
+                        if "executor" in value: # Scenario
+                            detail_md += f"  - Executor:\n```\n{escape(str(value.get('executor')))}\n```\n"
+                        # Display other potential fields in output as JSON
+                        other_output_keys = {k: v for k, v in value.items() if k not in ['answer', 'judgement', 'planner', 'executor']}
+                        if other_output_keys:
+                             detail_md += f"  - Other Output Data:\n```json\n{escape(json.dumps(other_output_keys, indent=2))}\n```\n"
+                    elif key == "decision_tree" and isinstance(value, dict):
+                        # Format large dicts like decision_tree as JSON block
+                        detail_md += f"**{key_title}:**\n```json\n{escape(json.dumps(value, indent=2))}\n```\n"
+                    elif key == "item_id": # Already displayed in header
+                        continue
+                    elif isinstance(value, (list, dict)): # Catch-all for other complex types
                          val_formatted = json.dumps(value, indent=2)
                          detail_md += f"**{key_title}:**\n```json\n{escape(val_formatted)}\n```\n"
-                    else:
-                         detail_md += f"**{key_title}:** {escape(value_str)}\n"
+                    else: # Simple key-value
+                         detail_md += f"**{key_title}:** {escape(str(value))}\n"
+
                     detail_md += "\n" # Add spacing
 
                 detail_markdown.update(detail_md)
@@ -462,3 +503,49 @@ class ResultsBrowserView(Static):
         else:
             self.log.info(f"No details found or data is not a dict for key '{lookup_key}'.")
             detail_markdown.update(f"Details not found or invalid format for key: {escape(lookup_key)}")
+
+    # --- Button Press Handler ---
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses, specifically for the upload button."""
+        self.log.debug(f"Button pressed: {event.button.id}")
+        if event.button.id == "upload-aws-button":
+            if self.selected_file:
+                filepath = RESULTS_DIR / self.selected_file
+                self.log.info(f"Upload button pressed for file: {filepath}")
+                if hasattr(self, 'app') and self.app:
+                    self.app.notify(f"Attempting to upload {self.selected_file}...", title="Upload Started")
+
+                # --- UPDATED: Use threading directly instead of run_sync_in_worker_thread ---
+                def upload_task():
+                    try:
+                        success, message = upload_file_to_aws(filepath)
+                        self.log.info(f"Upload result: Success={success}, Message='{message}'")
+                        # Use call_from_thread to safely update UI from the worker thread
+                        if hasattr(self, 'app') and self.app:
+                            severity = "information" if success else "error"
+                            title = "Upload Successful" if success else "Upload Failed"
+                            self.app.call_from_thread(
+                                self.app.notify,
+                                message,
+                                title=title,
+                                severity=severity,
+                                timeout=8 if success else 15
+                            )
+                    except Exception as e:
+                        self.log.exception(f"Error occurred during upload thread for {filepath}: {e}")
+                        if hasattr(self, 'app') and self.app:
+                             self.app.call_from_thread(
+                                self.app.notify,
+                                f"An unexpected error occurred in upload thread: {e}",
+                                title="Upload Error",
+                                severity="error",
+                                timeout=15
+                            )
+
+                # Create and start the thread
+                thread = threading.Thread(target=upload_task, daemon=True)
+                thread.start()
+            else:
+                self.log.warning("Upload button pressed but no file selected.")
+                if hasattr(self, 'app') and self.app:
+                    self.app.notify("No file selected for upload.", title="Upload Error", severity="warning")

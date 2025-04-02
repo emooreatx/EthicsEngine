@@ -25,11 +25,12 @@ from dashboard.dashboard_utils import (
 )
 # --- End Updated Imports ---
 
-# --- CLI Semaphore Monitoring Task ---
+# --- CLI Semaphore Monitoring Task (Copied from run_benchmarks.py) ---
+# This function definition remains, but it will be called by the main execution script (e.g., ethicsengine.py)
 async def monitor_semaphore_cli(semaphore_instance: TrackedSemaphore, interval: float = 2.0): # Type hint TrackedSemaphore
     """Periodically logs the TrackedSemaphore status."""
     # Check if it has the expected properties instead of isinstance
-    if not hasattr(semaphore_instance, 'capacity') or not hasattr(semaphore_instance, 'active_count'):
+    if not hasattr(semaphore_instance, 'capacity') or not hasattr(semaphore_instance, 'active_count') or not hasattr(semaphore_instance, 'waiting_count'): # Added waiting_count check
         logger.error("Monitor: Invalid TrackedSemaphore instance provided (missing properties).")
         return
 
@@ -39,10 +40,11 @@ async def monitor_semaphore_cli(semaphore_instance: TrackedSemaphore, interval: 
     logger.info(f"Starting CLI semaphore monitor (Capacity: {capacity}, Interval: {interval}s)")
     try:
         while True:
-            # Use the public property of TrackedSemaphore
+            # Use the public properties of TrackedSemaphore
             active_count = semaphore_instance.active_count
-            # Log the status using public properties
-            logger.info(f"Semaphore Status: Active Tasks = {active_count}/{capacity}")
+            waiting_count = semaphore_instance.waiting_count # Get waiting count
+            # Log the status using the full requested format
+            logger.info(f"running: {active_count} waiting: {waiting_count} limit: {capacity}")
             # No flush needed for logger
             await asyncio.sleep(interval) # Use the interval parameter
     except asyncio.CancelledError:
@@ -55,6 +57,7 @@ async def monitor_semaphore_cli(semaphore_instance: TrackedSemaphore, interval: 
 
 
 def parse_args():
+    # This function remains for potential direct script usage or testing, but isn't called by ethicsengine.py anymore
     parser = argparse.ArgumentParser(
         description="Run a pipeline (planner -> executor) for each scenario, including reasoning tree."
     )
@@ -74,11 +77,8 @@ def load_scenarios(path):
             logger.error(f"Scenarios file path is not a file or does not exist: {file_path_obj}")
             return []
         # Use the utility load_json here
-        # Corrected keyword argument from 'default' to 'default_data'
         data = load_json(file_path_obj, default_data=[]) # Default to empty list
-        # Note: The original "Error" check might not be effective if load_json returns default on error.
-        # Keeping it for now in case load_json is modified later.
-        if isinstance(data, dict) and "Error" in data: # Check if load_json returned an error indicator (safer check)
+        if isinstance(data, dict) and "Error" in data:
              logger.error(f"Failed to load scenarios JSON from {file_path_obj}: {data['Error']}")
              return []
 
@@ -90,14 +90,11 @@ def load_scenarios(path):
                     valid_scenarios.append(item)
                 else:
                     logger.warning(f"Skipping invalid scenario format at index {index} in {file_path_obj}: {item}")
-            # Return the populated list if the format was correct (list of dicts)
             return valid_scenarios
         else:
-            # This case handles if the top-level JSON structure wasn't a list
             logger.error(f"Unexpected format in scenarios file: {file_path_obj}. Expected a JSON list.")
             return []
     except Exception as e:
-        # Catch any unexpected errors during processing
         logger.error(f"Unexpected error loading scenarios from {path}: {e}", exc_info=True)
         return []
 
@@ -159,22 +156,64 @@ async def run_pipeline_for_scenario(scenario, args):
     logger.info(f"Pipeline {scenario_id}: Finished (Total time={pipeline_end_time - pipeline_start_time:.2f}s)")
     # Combine results including the planner's decision tree
     return {
-        "scenario_id": scenario_id,
-        "scenario_text": scenario_text,
-        "tags": scenario_tags,
-        "evaluation_criteria": scenario_eval_criteria,
-        "planner_output": planner_output,
-        "executor_output": executor_output,
+        "item_id": scenario_id, # Renamed from scenario_id
+        "item_text": scenario_text, # Renamed from scenario_text
+        "tags": scenario_tags, # Already present
+        "evaluation_criteria": scenario_eval_criteria, # Already present
+        "output": {
+            "planner": planner_output,
+            "executor": executor_output
+        },
         "decision_tree": planner_tree # Include the planner's tree
     }
 
-async def main(effective_args): # Expect effective args already resolved
-    # Use the effective arguments passed in
-    args = effective_args
-    # Log only once after determining args
-    logger.info(f"Running scenario pipelines: {args.species} - {args.model} - {args.reasoning_level}")
-    data_dir_path = Path(args.data_dir)
-    results_dir_path = Path(args.results_dir)
+# Renamed from main, this is the core async logic for running all scenarios once
+async def run_all_scenarios_async(cli_args=None): # Accept optional args like run_benchmarks
+    """Core async function to load data, run all scenario pipelines, and save results."""
+    # Use cli_args if provided, otherwise create an empty namespace
+    args = cli_args if cli_args is not None else argparse.Namespace()
+
+    # --- Determine effective arguments using getattr with defaults ---
+    # Re-introduce default handling similar to the old sync wrapper
+    default_species = "Jiminies"
+    default_model = "Deontological"
+    default_reasoning_level = "low"
+    default_data_dir = "data"
+    default_results_dir = "results"
+    default_scenarios_file = os.path.join("data", "scenarios.json")
+
+    effective_species = getattr(args, 'species', default_species)
+    effective_model = getattr(args, 'model', default_model)
+    effective_reasoning_level = getattr(args, 'reasoning_level', default_reasoning_level)
+    effective_data_dir = getattr(args, 'data_dir', default_data_dir)
+    effective_results_dir = getattr(args, 'results_dir', default_results_dir)
+    effective_scenarios_file = getattr(args, 'scenarios_file', default_scenarios_file)
+
+    # Ensure None values passed from ethicsengine are handled (use defaults if None)
+    effective_species = effective_species if effective_species is not None else default_species
+    effective_model = effective_model if effective_model is not None else default_model
+    effective_reasoning_level = effective_reasoning_level if effective_reasoning_level is not None else default_reasoning_level
+    effective_data_dir = effective_data_dir if effective_data_dir is not None else default_data_dir
+    effective_results_dir = effective_results_dir if effective_results_dir is not None else default_results_dir
+    effective_scenarios_file = effective_scenarios_file if effective_scenarios_file is not None else default_scenarios_file
+
+    # Create a new args object with effective values to avoid modifying the input
+    effective_args = argparse.Namespace(
+        species=effective_species,
+        model=effective_model,
+        reasoning_level=effective_reasoning_level,
+        data_dir=effective_data_dir,
+        results_dir=effective_results_dir,
+        scenarios_file=effective_scenarios_file
+    )
+    # --- End Argument Handling ---
+
+    # Log using effective values
+    logger.info(f"Running scenario pipelines: {effective_args.species} - {effective_args.model} - {effective_args.reasoning_level}")
+
+    # Convert paths AFTER ensuring they are not None
+    data_dir_path = Path(effective_args.data_dir)
+    results_dir_path = Path(effective_args.results_dir)
 
     # --- Use Utility Function to Load Metadata Dependencies ---
     metadata_deps = load_metadata_dependencies(data_dir_path)
@@ -183,80 +222,96 @@ async def main(effective_args): # Expect effective args already resolved
     if "Error" in species_full_data or "Error" in models_full_data:
         logger.error("Failed to load essential metadata (species/models). Exiting.")
         print("Error: Failed to load species.json or golden_patterns.json. Check logs.")
-        return
+        return None # Return None on failure
     # --- End Metadata Loading ---
 
-    # Load Scenarios
-    scenario_file_path_obj = Path(args.scenarios_file)
-    scenarios = load_scenarios(scenario_file_path_obj) # load_scenarios now uses utility load_json
+    # Load Scenarios using effective path
+    scenario_file_path_obj = Path(effective_args.scenarios_file)
+    scenarios = load_scenarios(scenario_file_path_obj)
     if not scenarios:
-        # Removed duplicated error logging/printing
         logger.error(f"No valid scenarios loaded from {scenario_file_path_obj}.")
         print(f"Error: No valid scenarios loaded from {scenario_file_path_obj}.")
-        return
+        return None # Return None on failure
 
-    # Run Pipelines Concurrently with CLI Monitoring
+    # Run Pipelines Concurrently - Monitor is handled by the caller now
     main_gather_start_time = time.monotonic()
     logger.info(f"Starting asyncio.gather for {len(scenarios)} pipeline tasks...")
 
-    # Start CLI semaphore monitor task
-    monitor_task = asyncio.create_task(monitor_semaphore_cli(semaphore)) # Use imported semaphore
+    # Removed monitor_task creation
 
     results_list = []
     try:
-        # Note: run_pipeline_for_scenario creates its own agent instances currently.
-        # This could be optimized later if agent creation is expensive.
-        pipeline_tasks = [run_pipeline_for_scenario(scenario, args) for scenario in scenarios]
-        results_list = await asyncio.gather(*pipeline_tasks)
+        # Pass the effective_args namespace to each pipeline run
+        pipeline_tasks = [run_pipeline_for_scenario(scenario, effective_args) for scenario in scenarios]
+        # Use return_exceptions=True to handle individual pipeline failures
+        results_or_exceptions = await asyncio.gather(*pipeline_tasks, return_exceptions=True)
+
+        # Process results, logging exceptions
+        for i, res_or_exc in enumerate(results_or_exceptions):
+            scenario_id = scenarios[i].get("id", f"unknown_index_{i}")
+            if isinstance(res_or_exc, Exception):
+                logger.error(f"Scenario pipeline for ID {scenario_id} failed with exception: {res_or_exc}", exc_info=res_or_exc)
+                # Append an error placeholder or skip? Let's append a placeholder.
+                results_list.append({
+                    "scenario_id": scenario_id,
+                    "error": f"Task failed: {res_or_exc}"
+                })
+            elif isinstance(res_or_exc, dict):
+                 results_list.append(res_or_exc)
+            else:
+                 logger.warning(f"Scenario pipeline for ID {scenario_id} returned unexpected type: {type(res_or_exc)}. Value: {res_or_exc}")
+                 results_list.append({
+                     "scenario_id": scenario_id,
+                     "error": f"Unexpected return type: {type(res_or_exc)}"
+                 })
+
     finally:
-        # Ensure monitor task is cancelled and awaited
-        if monitor_task and not monitor_task.done():
-            monitor_task.cancel()
-            # Use gather with return_exceptions=True to wait for cancellation to complete
-            await asyncio.gather(monitor_task, return_exceptions=True)
-        # Print a newline to move past the monitor's line
-        print()
+        # Removed monitor task cancellation
+        pass # No cleanup needed here now
 
     main_gather_end_time = time.monotonic()
     logger.info(f"Finished asyncio.gather (Total duration={main_gather_end_time - main_gather_start_time:.2f}s)")
 
 
     # --- Use Utility Function to Generate Metadata ---
+    # Use effective args for metadata
     metadata = generate_run_metadata(
         run_type="scenario_pipeline",
-        species=args.species,
-        model=args.model,
-        reasoning_level=args.reasoning_level,
+        species=effective_args.species,
+        model=effective_args.model,
+        reasoning_level=effective_args.reasoning_level,
         species_data=species_full_data,
         model_data=models_full_data
-        # llm_config and reasoning_specs are picked up from imported defaults in the util
     )
     # --- End Metadata Generation ---
 
     # Combine Metadata and Results
-    output_data = {"metadata": metadata, "results": results_list}
+    # Filter out potential error placeholders if they shouldn't be saved
+    final_results_to_save = [r for r in results_list if "error" not in r]
+    output_data = {"metadata": metadata, "results": final_results_to_save}
 
     # --- Use Centralized Save Function ---
+    # Use effective args for saving
     saved_file_path = save_results_with_standard_name(
         results_dir=results_dir_path,
-        run_type=metadata.get("run_type", "scenario_pipeline"), # Get type from metadata
-        species=args.species,
-        model=args.model,
-        level=args.reasoning_level,
+        run_type=metadata.get("run_type", "scenario_pipeline"),
+        species=effective_args.species,
+        model=effective_args.model,
+        level=effective_args.reasoning_level,
         data_to_save=output_data,
-        timestamp=metadata.get("run_timestamp") # Pass timestamp from metadata
+        timestamp=metadata.get("run_timestamp")
     )
 
     if saved_file_path:
-        print(f"Scenario pipeline results saved to {saved_file_path}") # Keep print for final user feedback
+        print(f"Scenario pipeline results saved to {saved_file_path}")
     else:
-        # Error is already logged by save_results_with_standard_name or save_json
         print(f"Error saving scenario pipeline results.")
 
     return saved_file_path # Return the path string or None
     # --- End Centralized Save Function ---
 
 # --- New Function for Single Scenario Run & Save ---
+# This function remains largely the same, but calls the updated run_pipeline_for_scenario
 async def run_and_save_single_scenario(scenario_dict: dict, args: argparse.Namespace) -> str | None:
     """Runs a single scenario, generates metadata, and saves the result."""
     logger.info(f"Running single scenario pipeline for ID: {scenario_dict.get('id', 'unknown')}")
@@ -297,79 +352,20 @@ async def run_and_save_single_scenario(scenario_dict: dict, args: argparse.Names
 
     saved_file_path = save_results_with_standard_name(
         results_dir=results_dir_path,
-        run_type=metadata.get("run_type", "scenario_pipeline_single"), # Get type from metadata
+        run_type=metadata.get("run_type", "scenario_pipeline_single"),
         species=args.species,
         model=args.model,
         level=args.reasoning_level,
         data_to_save=output_data_to_save,
-        item_id=scenario_id, # Pass the scenario ID
-        timestamp=metadata.get("run_timestamp") # Pass timestamp from metadata
+        item_id=scenario_id,
+        timestamp=metadata.get("run_timestamp")
     )
 
     if not saved_file_path:
-        # Error is already logged by save_results_with_standard_name or save_json
-        logger.error(f"Failed to save single scenario result for ID: {scenario_id}") # Add specific log
+        logger.error(f"Failed to save single scenario result for ID: {scenario_id}")
 
-    return saved_file_path # Return the path string or None
-    # --- End Centralized Save Function ---
+    return saved_file_path
 # --- End New Function ---
 
-
-# --- New Synchronous Entry Point ---
-def run_all_scenarios(cli_args=None): # Accept optional args from ethicsengine
-    """Synchronous wrapper to run the main async logic."""
-    # Use cli_args if provided, otherwise create an empty namespace
-    args = cli_args if cli_args is not None else argparse.Namespace()
-
-    # --- Determine effective arguments using getattr with defaults ---
-    default_species = "Jiminies"
-    default_model = "Deontological"
-    default_reasoning_level = "low"
-    default_data_dir = "data"
-    default_results_dir = "results"
-    default_scenarios_file = os.path.join("data", "scenarios.json")
-
-    effective_species = getattr(args, 'species', default_species)
-    effective_model = getattr(args, 'model', default_model)
-    effective_reasoning_level = getattr(args, 'reasoning_level', default_reasoning_level)
-    effective_data_dir = getattr(args, 'data_dir', default_data_dir)
-    effective_results_dir = getattr(args, 'results_dir', default_results_dir)
-    effective_scenarios_file = getattr(args, 'scenarios_file', default_scenarios_file)
-
-    # Ensure None values passed from ethicsengine are handled (use defaults if None)
-    effective_species = effective_species if effective_species is not None else default_species
-    effective_model = effective_model if effective_model is not None else default_model
-    effective_reasoning_level = effective_reasoning_level if effective_reasoning_level is not None else default_reasoning_level
-    effective_data_dir = effective_data_dir if effective_data_dir is not None else default_data_dir
-    effective_results_dir = effective_results_dir if effective_results_dir is not None else default_results_dir
-    effective_scenarios_file = effective_scenarios_file if effective_scenarios_file is not None else default_scenarios_file
-
-    # Create a namespace with the effective arguments to pass to main
-    effective_args_ns = argparse.Namespace(
-        species=effective_species,
-        model=effective_model,
-        reasoning_level=effective_reasoning_level,
-        data_dir=effective_data_dir,
-        results_dir=effective_results_dir,
-        scenarios_file=effective_scenarios_file
-    )
-
-    logger.info(f"Executing run_all_scenarios with effective args: {effective_args_ns}")
-    result_filename = None # Initialize result
-    try:
-        # Pass the resolved effective arguments to the async main function and capture the result
-        result_filename = asyncio.run(main(effective_args=effective_args_ns))
-        return result_filename # Return the filename on success
-    except Exception as e:
-        logger.error(f"Error during run_all_scenarios execution: {e}", exc_info=True)
-        # Optionally return None or re-raise depending on desired error handling for the caller
-        # For now, let's return None to indicate failure to the caller without crashing
-        return None
-        # Alternatively, re-raise if the caller should handle the exception:
-        raise
-
-if __name__ == "__main__":
-    # Original __main__ block now calls the new synchronous entry point
-    # after parsing its own args if run directly.
-    script_args = parse_args()
-    run_all_scenarios(script_args)
+# Removed the synchronous wrapper function run_all_scenarios
+# Removed the if __name__ == "__main__": block

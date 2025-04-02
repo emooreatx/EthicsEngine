@@ -2,12 +2,12 @@
   "llm_config_list": [
     {
       "model": "gpt-4o-mini",
-      "api_key": "env:OPENAI_API_KEY" 
+      "api_key": "env:OPENAI_API_KEY"
     }
   ],
-  "concurrency": 10,
+  "concurrency": 100,
   "log_level": "INFO",
-  "agent_timeout": 300,
+  "agent_timeout": 300.0,
   "reasoning_specs": {
     "low": {
       "description": "Low detail reasoning configuration",

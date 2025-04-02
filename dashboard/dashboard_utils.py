@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+import argparse # Added import
 
 # Attempt to import logger and config elements for use in utils
 try:
@@ -15,6 +16,13 @@ except ImportError:
     logger = logging.getLogger("dashboard_utils_fallback")
     llm_config_obj = None # Indicate config is unavailable
     AG2_REASONING_SPECS = {} # Empty specs
+
+# --- Helper Class (Moved from interactive_dashboard.py) ---
+class ArgsNamespace(argparse.Namespace): # Inherit from argparse.Namespace for compatibility
+    # Helper class to mimic argparse Namespace
+    def __init__(self, data_dir, results_dir, species, model, reasoning_level, bench_file=None, scenarios_file=None):
+        super().__init__() # Initialize base class
+        self.data_dir = str(data_dir); self.results_dir = str(results_dir); self.species = species; self.model = model; self.reasoning_level = reasoning_level; self.bench_file = str(bench_file) if bench_file else None; self.scenarios_file = str(scenarios_file) if scenarios_file else None
 
 # --- File Path Constants ---
 # Define these relative to the project root (EthicsEngine)
@@ -210,12 +218,26 @@ def save_results_with_standard_name(
             logger.error(f"Cannot determine filename for run_type '{run_type}' (item_id: {item_id})")
             return None
 
-        output_filename = results_dir / filename
+        # --- Add logic to handle potential filename collisions ---
+        base_filename_part = filename.rsplit('.', 1)[0] # Get filename without extension
+        extension = filename.rsplit('.', 1)[1] if '.' in filename else ''
+        output_filepath = results_dir / filename # Initial proposed path
+        sequence = 1
 
-        # Call the modified save_json
-        if save_json(output_filename, data_to_save):
+        # Check for existing file and append sequence number if needed
+        while output_filepath.exists():
+            new_filename = f"{base_filename_part}_{sequence:03d}.{extension}"
+            output_filepath = results_dir / new_filename
+            sequence += 1
+            if sequence > 999: # Safety break to prevent infinite loop
+                 logger.error(f"Could not find unique filename after 999 attempts for base: {base_filename_part}")
+                 return None
+        # --- End collision handling setup ---
+
+        # Call save_json with the potentially modified unique filepath
+        if save_json(output_filepath, data_to_save):
             # save_json already logs success, just return the path
-            return str(output_filename)
+            return str(output_filepath)
         else:
             # save_json already logged the error
             return None

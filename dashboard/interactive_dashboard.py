@@ -15,12 +15,14 @@ import functools
 from datetime import datetime
 import argparse # Need argparse to create the namespace object
 
+import uuid # Import uuid for unique task IDs
 from textual.app import App, ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal, Vertical
-from textual.widgets import Header, Footer, Button, Static, Select, Label, Markdown, LoadingIndicator, TabbedContent, TabPane, RadioSet, RadioButton
+from textual.widgets import Header, Footer, Button, Static, Select, Label, Markdown, LoadingIndicator, TabbedContent, TabPane, RadioSet, RadioButton, ListView, ListItem
 from textual.binding import Binding
-from textual.reactive import reactive
-# Message import removed
+from textual.reactive import reactive # Ensure list_validator is removed
+from textual.widgets import ListView, ListItem, Label # Added for watch_task_queue type hinting if needed
+from textual.markup import escape # Import escape
 
 # Import Views
 try:
@@ -37,19 +39,25 @@ except ImportError as e:
 
 # Import Utils
 try:
-    from dashboard.dashboard_utils import (load_json, save_json, SCENARIOS_FILE, GOLDEN_PATTERNS_FILE, SPECIES_FILE, BENCHMARKS_FILE, DATA_DIR, RESULTS_DIR)
+    from dashboard.dashboard_utils import (load_json, save_json, SCENARIOS_FILE, GOLDEN_PATTERNS_FILE, SPECIES_FILE, BENCHMARKS_FILE, DATA_DIR, RESULTS_DIR, ArgsNamespace) # Added ArgsNamespace import
 except ImportError as e:
      print(f"Fatal Error: Could not import dashboard utils: {e}")
      import logging; logging.basicConfig(level=logging.ERROR); logging.error(f"Fatal Error: Import utils: {e}", exc_info=True); exit()
 
-# Import Full Run Logic & Specific Run Functions
+# Import Backend Logic & Config FIRST to ensure logger is available for error handling below
+# Import the configured logger instance directly
+from config.config import llm_config, logger as configured_logger, semaphore, SEMAPHORE_CAPACITY
+
+# Import Full Run Logic & Specific Run Functions (AFTER logger is imported)
 try:
-    from dashboard.dashboard_full_run import run_full_set
-    # Import the specific run functions needed for delegation
-    from .run_scenario_pipelines import run_all_scenarios, run_and_save_single_scenario
-    from .run_benchmarks import run_benchmarks, run_and_save_single_benchmark, load_benchmarks # Keep load_benchmarks for single item lookup
+    # Use absolute imports assuming project root is in path
+    # from dashboard.dashboard_full_run import run_full_set # Removed import
+    from dashboard.run_scenario_pipelines import run_all_scenarios_async, run_and_save_single_scenario # Renamed import
+    from dashboard.run_benchmarks import run_benchmarks_async, run_and_save_single_benchmark, load_benchmarks # Renamed import
 except ImportError as e:
-    print(f"Warning: Could not import run logic: {e}")
+    # Log the error more visibly if imports fail
+    configured_logger.error(f"FATAL: Failed to import run logic modules: {e}", exc_info=True)
+    print(f"FATAL ERROR: Could not import run logic: {e}. Check logs and Python path.")
     # Define dummy functions if import fails to prevent crashes
     def run_full_set(*args, **kwargs): print("ERROR: run_full_set not available!"); return None, None
     def run_all_scenarios(*args, **kwargs): print("ERROR: run_all_scenarios not available!"); return None
@@ -58,20 +66,14 @@ except ImportError as e:
     def run_and_save_single_benchmark(*args, **kwargs): print("ERROR: run_and_save_single_benchmark not available!"); return None
     def load_benchmarks(*args, **kwargs): print("ERROR: load_benchmarks not available!"); return []
 
-
-# Import Backend Logic & Config
-# Import the configured logger instance directly
-from config.config import llm_config, logger as configured_logger, semaphore, SEMAPHORE_CAPACITY
+# Import the Task Queue Manager
+from .task_queue_manager import TaskQueueManager # Added import
 
 # Constants and Helper Class
 REASONING_DEPTH_OPTIONS = ["low", "medium", "high"]
 TASK_TYPE_OPTIONS = ["Ethical Scenarios", "Benchmarks"]
 
-class ArgsNamespace(argparse.Namespace): # Inherit from argparse.Namespace for compatibility
-    # Helper class to mimic argparse Namespace
-    def __init__(self, data_dir, results_dir, species, model, reasoning_level, bench_file=None, scenarios_file=None):
-        super().__init__() # Initialize base class
-        self.data_dir = str(data_dir); self.results_dir = str(results_dir); self.species = species; self.model = model; self.reasoning_level = reasoning_level; self.bench_file = str(bench_file) if bench_file else None; self.scenarios_file = str(scenarios_file) if scenarios_file else None
+# ArgsNamespace class definition removed, now imported from dashboard_utils
 
 
 class EthicsEngineApp(App):
@@ -86,13 +88,24 @@ class EthicsEngineApp(App):
     selected_depth = reactive(REASONING_DEPTH_OPTIONS[0])
     selected_task_type = reactive(TASK_TYPE_OPTIONS[0])
     selected_task_item = reactive(None) # Holds the ID of the selected scenario/benchmark
-    loading = reactive(False)
+    loading = reactive(False) # Tracks if the *queue* is running
+    task_queue = reactive(list[dict]) # Ensure validation is removed
+    is_queue_processing = reactive(False) # Flag to prevent multiple queue runs
 
     def __init__(self):
+        # Ensure logger is available before using it
+        try:
+            configured_logger.debug("App.__init__: START") # DEBUG LOG
+        except NameError: # Fallback if logger isn't imported yet (shouldn't happen here)
+            print("App.__init__: START (Logger not ready)")
         super().__init__()
+        configured_logger.debug("App.__init__: super().__init__() finished") # DEBUG LOG
         # --- Logger is imported as configured_logger ---
+        self.task_queue_manager = TaskQueueManager(self) # Instantiate the manager
+        configured_logger.debug("App.__init__: TaskQueueManager instantiated") # DEBUG LOG
 
         # Load initial data
+        configured_logger.debug("App.__init__: Loading scenarios...") # DEBUG LOG
         self.scenarios = load_json(SCENARIOS_FILE, [])
         if isinstance(self.scenarios, dict) and "Error" in self.scenarios:
              configured_logger.error(f"Failed to load scenarios: {self.scenarios['Error']}") # Use configured_logger
@@ -100,18 +113,30 @@ class EthicsEngineApp(App):
         elif not isinstance(self.scenarios, list):
              configured_logger.error(f"Scenarios file {SCENARIOS_FILE} is not a list. Content: {self.scenarios}") # Use configured_logger
              self.scenarios = [{"id": "FORMAT_ERROR", "prompt": "Error: scenarios.json is not a list."}]
+        configured_logger.debug("App.__init__: Scenarios loaded.") # DEBUG LOG
 
+        configured_logger.debug("App.__init__: Loading models...") # DEBUG LOG
         self.models = load_json(GOLDEN_PATTERNS_FILE, {"Error": "Could not load models"})
         if "Error" in self.models: configured_logger.error(f"Failed to load models: {self.models['Error']}") # Use configured_logger
+        configured_logger.debug("App.__init__: Models loaded.") # DEBUG LOG
+
+        configured_logger.debug("App.__init__: Loading species...") # DEBUG LOG
         self.species = load_json(SPECIES_FILE, {"Error": "Could not load species"})
         if "Error" in self.species: configured_logger.error(f"Failed to load species: {self.species['Error']}") # Use configured_logger
+        configured_logger.debug("App.__init__: Species loaded.") # DEBUG LOG
+
+        configured_logger.debug("App.__init__: Loading benchmarks...") # DEBUG LOG
         self.benchmarks_data_struct = load_json(BENCHMARKS_FILE, {"Error": "Could not load benchmarks"})
         if "Error" in self.benchmarks_data_struct: configured_logger.error(f"Failed to load benchmarks: {self.benchmarks_data_struct['Error']}") # Use configured_logger
+        configured_logger.debug("App.__init__: Benchmarks loaded.") # DEBUG LOG
 
         # Set initial selections
+        configured_logger.debug("App.__init__: Setting initial selections...") # DEBUG LOG
         if isinstance(self.species, dict) and "Error" not in self.species: self.selected_species = next(iter(self.species), None)
         if isinstance(self.models, dict) and "Error" not in self.models: self.selected_model = next(iter(self.models), None)
+        configured_logger.debug("App.__init__: Calling _update_initial_task_item...") # DEBUG LOG
         self._update_initial_task_item()
+        configured_logger.debug("App.__init__: FINISHED") # DEBUG LOG
 
     def _update_initial_task_item(self):
         """Sets the initial selected task item ID based on the current task type."""
@@ -141,23 +166,43 @@ class EthicsEngineApp(App):
         configured_logger.info(f"Default Task Item ID set to: {self.selected_task_item} for Task Type: {self.selected_task_type}") # Use configured_logger
 
     def compose(self) -> ComposeResult:
+        # Restore the intended layout structure with correct indentation (Attempt 3)
         yield Header(show_clock=True)
-        with Container(id="loading-layer-container"): yield LoadingIndicator(id="loading-indicator")
-        with TabbedContent(id="main-tabs", initial="tab-run"):
-            with TabPane("Agent Run", id="tab-run"):
-                 yield RunConfigurationView(
-                     species=self.species, models=self.models,
-                     depth_options=REASONING_DEPTH_OPTIONS, task_types=TASK_TYPE_OPTIONS,
-                     scenarios=self.scenarios, benchmarks=self.benchmarks_data_struct,
-                     current_species=self.selected_species, current_model=self.selected_model,
-                     current_depth=self.selected_depth, current_task_type=self.selected_task_type,
-                     current_task_item=self.selected_task_item,
-                     id="run-configuration-view"
-                 )
-            with TabPane("Data Management", id="tab-data"): yield DataManagementView(scenarios=self.scenarios, models=self.models, species_data=self.species, id="data-management-view")
-            with TabPane("Results Browser", id="tab-results-browser"): yield ResultsBrowserView(id="results-browser-view")
-            with TabPane("Log Viewer", id="tab-log"): yield LogView(id="log-view")
-            with TabPane("Configuration", id="tab-config"): yield ConfigEditorView(id="config-editor-view")
+        with Container(id="loading-layer-container"): # Level 0
+            # Level 1
+            yield LoadingIndicator(id="loading-indicator")
+
+        # Revert to layout using Horizontal/Vertical with explicit IDs
+        with Horizontal(id="main-layout"): # Level 0 - Renamed ID
+            # Level 1: Left side
+            with Vertical(id="main-content"): # Restore Vertical wrapper - Renamed ID
+                # Level 2
+                with TabbedContent(id="main-tabs", initial="tab-run"):
+                    # Level 3
+                    with TabPane("Agent Run", id="tab-run"):
+                        # Level 4
+                        yield RunConfigurationView(
+                            species=self.species, models=self.models,
+                            depth_options=REASONING_DEPTH_OPTIONS, task_types=TASK_TYPE_OPTIONS,
+                            scenarios=self.scenarios, benchmarks=self.benchmarks_data_struct,
+                            current_species=self.selected_species, current_model=self.selected_model, # Removed duplicate arguments from the next line
+                            current_depth=self.selected_depth, current_task_type=self.selected_task_type,
+                            current_task_item=self.selected_task_item,
+                            id="run-configuration-view"
+                        )
+                    with TabPane("Data Management", id="tab-data"): # Level 3
+                        yield DataManagementView(scenarios=self.scenarios, models=self.models, species_data=self.species, id="data-management-view") # Level 4
+                    with TabPane("Results Browser", id="tab-results-browser"): # Level 3
+                        yield ResultsBrowserView(id="results-browser-view") # Level 4
+                    with TabPane("Log Viewer", id="tab-log"): # Level 3
+                        yield LogView(id="log-view") # Level 4
+                    with TabPane("Configuration", id="tab-config"): # Level 3
+                        yield ConfigEditorView(id="config-editor-view") # Level 4
+
+            # Level 1: Right side Queue Pane REMOVED from here.
+            # It will be placed inside RunConfigurationView instead.
+
+        # Level 0
         yield Footer()
 
     def on_mount(self) -> None:
@@ -182,300 +227,134 @@ class EthicsEngineApp(App):
 
     # --- Watchers ---
     def watch_run_status(self, status: str) -> None:
-        self.loading = ("Running" in status)
+        # self.loading = ("Running" in status or "Processing" in status) # REMOVED - Loading state managed explicitly
+        # Make widget query safer
         try:
-            config_view = self.query_one(RunConfigurationView)
-            status_widget = config_view.query_one("#run-status", Static)
+            status_widget = self.query_one("#run-status", Static)
             status_widget.update(f"Status: {status}")
         except Exception as e:
-            configured_logger.warning(f"Could not find #run-status widget: {e}") # Use configured_logger
+            # Use self.log, widget might not exist yet/anymore
+            self.log.warning(f"Could not update #run-status widget in watch_run_status: {e}")
 
     def watch_semaphore_status(self, status: str) -> None:
         """Updates the UI when the semaphore_status reactive variable changes."""
+        # Make widget query safer
         try:
-            config_view = self.query_one(RunConfigurationView)
-            sema_widget = config_view.query_one("#semaphore-status-display", Static)
+            sema_widget = self.query_one("#semaphore-status-display", Static)
             sema_widget.update(status)
         except Exception as e:
-            configured_logger.warning(f"Could not find #semaphore-status-display widget: {e}") # Use configured_logger
+            # Use self.log, widget might not exist yet/anymore
+            self.log.warning(f"Could not update #semaphore-status-display widget in watch_semaphore_status: {e}")
 
     def watch_loading(self, loading: bool) -> None:
+        # Make widget queries safer with individual try-except blocks
         try:
-            indicator = self.query_one("#loading-indicator"); indicator.display = loading
-            config_view = self.query_one(RunConfigurationView)
-            run_button = config_view.query_one("#run-analysis-button", Button)
-            scenarios_button = config_view.query_one("#run-scenarios-button", Button)
-            benchmarks_button = config_view.query_one("#run-benchmarks-button", Button)
-            full_run_button = config_view.query_one("#run-full-set-button", Button)
-            # Disable all run buttons when loading
+            indicator = self.query_one("#loading-indicator")
+            indicator.display = loading
+        except Exception as e:
+            self.log.warning(f"Could not update #loading-indicator in watch_loading: {e}")
+
+        try:
+            run_button = self.query_one("#run-analysis-button", Button)
             run_button.disabled = loading
+        except Exception as e:
+            self.log.warning(f"Could not update #run-analysis-button in watch_loading: {e}")
+
+        try:
+            scenarios_button = self.query_one("#run-scenarios-button", Button)
             scenarios_button.disabled = loading
+        except Exception as e:
+            self.log.warning(f"Could not update #run-scenarios-button in watch_loading: {e}")
+
+        try:
+            benchmarks_button = self.query_one("#run-benchmarks-button", Button)
             benchmarks_button.disabled = loading
-            full_run_button.disabled = loading
         except Exception as e:
-            configured_logger.warning(f"Could not update loading indicator/buttons: {e}") # Use configured_logger
+            self.log.warning(f"Could not update #run-benchmarks-button in watch_loading: {e}")
 
-    # --- Refactored Actions ---
-    async def action_run_analysis(self):
-        """Runs analysis for a single selected task item by delegating to specific run/save functions."""
-        if self.loading: self.notify("Analysis already running.", severity="warning"); return
-        await asyncio.sleep(0.01); self.run_status = "Running Single Item..."
-        saved_output_file = None # Will store the filename returned by the delegated function
         try:
-            # Create args object from UI state
-            args_obj = ArgsNamespace(
-                data_dir=DATA_DIR,
-                results_dir=RESULTS_DIR,
-                species=self.selected_species,
-                model=self.selected_model,
-                reasoning_level=self.selected_depth,
-                bench_file=BENCHMARKS_FILE, # Pass even if not used by scenarios
-                scenarios_file=SCENARIOS_FILE # Pass even if not used by benchmarks
-            )
-            if not all([args_obj.species, args_obj.model, args_obj.reasoning_level]):
-                raise ValueError("Species, Model, and Depth must be selected.")
-            if not self.selected_task_type or self.selected_task_item is None:
-                raise ValueError("Task Type and Task Item must be selected.")
-
-            # Find the selected item dictionary
-            selected_item_dict = None
-            if self.selected_task_type == "Ethical Scenarios":
-                 scenario_id_to_find = self.selected_task_item
-                 if isinstance(self.scenarios, list):
-                      for item in self.scenarios:
-                           if isinstance(item, dict) and item.get("id") == scenario_id_to_find:
-                                selected_item_dict = item
-                                configured_logger.info(f"Found scenario object for ID: {scenario_id_to_find}") # Use configured_logger
-                                break
-                 if not selected_item_dict:
-                      configured_logger.error(f"Could not find scenario with ID '{scenario_id_to_find}' in the loaded list.") # Use configured_logger
-                      raise ValueError(f"Scenario ID '{scenario_id_to_find}' not found.")
-
-                 # Delegate to the specific run/save function in a thread
-                 configured_logger.info(f"Delegating single scenario run for ID {scenario_id_to_find} to thread...") # Use configured_logger
-                 # Need to run the async function run_and_save_single_scenario in a sync context
-                 def run_sync_wrapper(): return asyncio.run(run_and_save_single_scenario(selected_item_dict, args_obj))
-                 saved_output_file = await asyncio.to_thread(run_sync_wrapper)
-                 configured_logger.info(f"Threaded single scenario run completed. Saved file: {saved_output_file}") # Use configured_logger
-
-            elif self.selected_task_type == "Benchmarks":
-                 selected_qid_str = self.selected_task_item
-                 # Need to load benchmarks to find the item dict
-                 benchmarks_data = load_benchmarks(args_obj.bench_file) # Use imported load_benchmarks
-                 target_benchmarks = benchmarks_data if isinstance(benchmarks_data, list) else []
-                 if not target_benchmarks: raise ValueError("No benchmark data found or loaded.")
-
-                 for item in target_benchmarks:
-                      if isinstance(item, dict) and str(item.get("question_id")) == selected_qid_str:
-                           selected_item_dict = item
-                           configured_logger.info(f"Found benchmark object for QID: {selected_qid_str}") # Use configured_logger
-                           break
-                 if not selected_item_dict:
-                      raise ValueError(f"Could not find benchmark data for QID: {selected_qid_str}")
-
-                 # Delegate to the specific run/save function in a thread
-                 configured_logger.info(f"Delegating single benchmark run for QID {selected_qid_str} to thread...") # Use configured_logger
-                 # Need to run the async function run_and_save_single_benchmark in a sync context
-                 def run_sync_wrapper(): return asyncio.run(run_and_save_single_benchmark(selected_item_dict, args_obj))
-                 saved_output_file = await asyncio.to_thread(run_sync_wrapper)
-                 configured_logger.info(f"Threaded single benchmark run completed. Saved file: {saved_output_file}") # Use configured_logger
-
-            else:
-                 raise ValueError("Invalid task type selected")
-
-            # --- Update UI based on result ---
-            if saved_output_file:
-                 self.run_status = "Completed"
-                 self.notify(f"Run complete. Results saved to {os.path.basename(saved_output_file)}.\nSee Results Browser tab.", title="Success", timeout=8)
-                 # Refresh results browser
-                 try:
-                      browser_view = self.query_one(ResultsBrowserView)
-                      browser_view._populate_file_list()
-                 except Exception as browse_e:
-                      self.log.warning(f"Could not refresh browser list: {browse_e}") # Use self.log
-            else:
-                 self.run_status = "Completed with Errors"
-                 self.notify("Run finished, but failed to save results. Check logs.", title="Error Saving", severity="error", timeout=8)
-
-        except ImportError as e:
-             self.run_status = f"Error: Import failed ({e})"
-             self.notify(f"Import Error: {e}", severity="error")
-             configured_logger.error(f"Import Error: {e}\n{traceback.format_exc()}") # Use configured_logger
-        except ValueError as e:
-             self.run_status = f"Error: Config ({e})"
-             self.notify(f"Config Error: {e}", severity="error")
-             configured_logger.error(f"Config Error: {e}") # Use configured_logger
+            start_button = self.query_one("#start-queue-button", Button)
+            start_button.disabled = not self.task_queue or loading or self.is_queue_processing
         except Exception as e:
-             self.run_status = f"Error: {e}"
-             self.notify(f"Runtime Error: {e}", severity="error")
-             configured_logger.error(f"Runtime Error in action_run_analysis: {e}\n{traceback.format_exc()}") # Use configured_logger
+            self.log.warning(f"Could not update #start-queue-button in watch_loading: {e}")
 
-
-    async def action_run_full_set(self):
-        """Runs the full set of benchmarks and scenarios by delegating to dashboard_full_run."""
-        if self.loading: return
-        self.run_status = "Running Full Set..."
         try:
-            # Create args object from UI state
-            args_obj = ArgsNamespace(
-                data_dir=DATA_DIR,
-                results_dir=RESULTS_DIR,
-                species=self.selected_species,
-                model=self.selected_model,
-                reasoning_level=self.selected_depth,
-                bench_file=BENCHMARKS_FILE,
-                scenarios_file=SCENARIOS_FILE
-            )
-            if not all([args_obj.species, args_obj.model, args_obj.reasoning_level]):
-                raise ValueError("Species, Model, and Depth must be selected.")
-
-            configured_logger.info(f"Delegating full set run for {args_obj.species}, {args_obj.model}, {args_obj.reasoning_level} to thread...") # Use configured_logger
-
-            # Run the backend function in a thread, passing the args object
-            # run_full_set is expected to be synchronous and handle its own async internally if needed
-            saved_files = await asyncio.to_thread(
-                run_full_set,
-                species=args_obj.species,
-                model=args_obj.model,
-                reasoning_level=args_obj.reasoning_level,
-                data_dir=args_obj.data_dir,
-                results_dir=args_obj.results_dir,
-                bench_file=args_obj.bench_file,
-                scenarios_file=args_obj.scenarios_file
-            )
-
-            self.run_status = "Full Run Completed"
-            if saved_files and len(saved_files) == 2 and all(saved_files):
-                 bench_out, scenario_out = saved_files
-                 self.notify(f"Full run finished.\nBenchmarks: {os.path.basename(bench_out)}\nScenarios: {os.path.basename(scenario_out)}\nSee Results Browser tab.", title="Success", timeout=10)
-            else:
-                 # Log the actual saved_files content for debugging if it failed
-                 configured_logger.warning(f"Full run completed, but issues saving files. saved_files: {saved_files}") # Use configured_logger
-                 self.notify("Full run completed, but issues saving files. Check logs.", severity="warning", title="Completed with Issues", timeout=10)
-
-            # Refresh results browser regardless of save success
-            try:
-                 browser_view = self.query_one(ResultsBrowserView)
-                 browser_view._populate_file_list()
-                 configured_logger.info("Results browser list refreshed after full run.") # Use configured_logger
-            except Exception as browse_e:
-                 configured_logger.warning(f"Could not refresh results browser list after full run: {browse_e}") # Use configured_logger
-
-        except ValueError as e:
-             self.run_status = f"Error: Config ({e})"
-             self.notify(f"Config Error: {e}", severity="error")
-             configured_logger.error(f"Config Error in action_run_full_set: {e}") # Use configured_logger
+            clear_button = self.query_one("#clear-queue-button", Button)
+            clear_button.disabled = loading or self.is_queue_processing
         except Exception as e:
-             self.run_status = f"Error: {e}"
-             self.notify(f"Runtime Error: {e}", severity="error")
-             configured_logger.error(f"Runtime Error in action_run_full_set: {e}\n{traceback.format_exc()}") # Use configured_logger
+            self.log.warning(f"Could not update #clear-queue-button in watch_loading: {e}")
 
 
-    async def action_run_scenarios(self):
-        """Runs analysis for all scenarios by delegating to run_all_scenarios."""
-        if self.loading: self.notify("Analysis already running.", severity="warning"); return
-        await asyncio.sleep(0.01); self.run_status = "Running All Scenarios..."
+    def watch_task_queue(self, old_queue: list, new_queue: list) -> None:
+        """Updates the queue ListView when the task_queue reactive changes."""
+        # Add robust error handling in case the widget isn't ready
         try:
-            # Create args object from UI state
-            args_obj = ArgsNamespace(
-                data_dir=DATA_DIR,
-                results_dir=RESULTS_DIR,
-                species=self.selected_species,
-                model=self.selected_model,
-                reasoning_level=self.selected_depth,
-                scenarios_file=SCENARIOS_FILE
-                # bench_file is not needed by run_all_scenarios
-            )
-            if not all([args_obj.species, args_obj.model, args_obj.reasoning_level]):
-                raise ValueError("Species, Model, and Depth must be selected.")
+            # Make widget query safer
+            queue_list_view = self.query_one("#queue-list", ListView)
+            current_index = queue_list_view.index # Preserve scroll position if possible
+            queue_list_view.clear() # Clear existing items
+            for i, task in enumerate(new_queue):
+                # Create a descriptive label for the task
+                task_desc = f"[{i+1}/{len(new_queue)}] {task.get('type', 'Unknown')}: "
+                task_type = task.get('task_type', '?') # Scenario or Benchmark for single runs
+                item_id = task.get('item_id', '?')
+                species = task.get('species', 'N/A')
+                model = task.get('model', 'N/A')
+                depth = task.get('depth', 'N/A')
+                status = task.get('status', 'Pending')
 
-            configured_logger.info(f"Delegating 'run all scenarios' for {args_obj.species}, {args_obj.model}, {args_obj.reasoning_level} to thread...") # Use configured_logger
+                if task.get('type') == 'single':
+                    task_desc += f"{task_type} ID: {item_id}"
+                elif task.get('type') == 'all_scenarios':
+                    task_desc += "All Scenarios"
+                elif task.get('type') == 'all_benchmarks':
+                    task_desc += "All Benchmarks"
+                else:
+                    task_desc += "Invalid Task"
 
-            # Run the backend function in a thread
-            # run_all_scenarios is synchronous but runs async logic internally
-            saved_output_file = await asyncio.to_thread(run_all_scenarios, cli_args=args_obj)
+                task_desc += f" (S:{species}, M:{model}, D:{depth})"
+                # Add status
+                task_desc += f" - {status}"
 
-            self.run_status = "Completed Scenarios Run"
-            if saved_output_file:
-                 self.notify(f"All Scenarios run complete.\nResults saved to {os.path.basename(saved_output_file)}.\nSee Results Browser.", title="Success", timeout=8)
-            else:
-                 self.notify("Scenarios run finished, but failed to save results. Check logs.", title="Warning", severity="warning", timeout=8)
+                # Replace brackets before escaping to avoid MarkupError during layout
+                safe_task_desc = task_desc.replace('[', '(').replace(']', ')')
+                item = ListItem(Static(escape(safe_task_desc)))
+                item.task_data = task # Store original data
+                item.task_id = task.get('id') # Store unique ID
+                # Apply styling based on status
+                if status == 'Running': item.set_classes("running")
+                elif status == 'Completed': item.set_classes("completed")
+                elif status == 'Error': item.set_classes("error")
+                elif status == 'Warning': item.set_classes("warning") # Added warning class
+                else: item.set_classes("pending") # Default/Pending
 
-            # Refresh results browser
-            try:
-                 browser_view = self.query_one(ResultsBrowserView)
-                 browser_view._populate_file_list()
-            except Exception as browse_e:
-                 self.log.warning(f"Could not refresh browser list after running scenarios: {browse_e}") # Use self.log
+                queue_list_view.append(item)
 
-        except ImportError as e:
-             self.run_status = f"Error: Import failed ({e})"
-             self.notify(f"Import Error: {e}", severity="error")
-             configured_logger.error(f"Import Error in action_run_scenarios: {e}\n{traceback.format_exc()}") # Use configured_logger
-        except ValueError as e:
-             self.run_status = f"Error: Config ({e})"
-             self.notify(f"Config Error: {e}", severity="error")
-             configured_logger.error(f"Config Error in action_run_scenarios: {e}") # Use configured_logger
+            # Restore scroll position if valid
+            if current_index is not None and current_index < len(new_queue):
+                queue_list_view.index = current_index
+            elif len(new_queue) > 0:
+                 queue_list_view.index = 0 # Scroll to top if index invalid
+
+            # Enable/disable Start button based on queue content and processing state
+            start_button = self.query_one("#start-queue-button", Button)
+            start_button.disabled = not new_queue or self.is_queue_processing or self.loading
+
+            self.log.debug("Queue ListView updated.") # Use self.log
         except Exception as e:
-             self.run_status = f"Error: {e}"
-             self.notify(f"Runtime Error: {e}", severity="error")
-             configured_logger.error(f"Runtime Error in action_run_scenarios: {e}\n{traceback.format_exc()}") # Use configured_logger
+            # Use self.log which is safer during startup/shutdown
+            self.log.error(f"Error updating #queue-list view in watch_task_queue: {e}", exc_info=True)
 
-
-    async def action_run_benchmarks(self):
-        """Runs analysis for all benchmarks by delegating to run_benchmarks."""
-        if self.loading: self.notify("Analysis already running.", severity="warning"); return
-        await asyncio.sleep(0.01); self.run_status = "Running All Benchmarks..."
-        try:
-            # Create args object from UI state
-            args_obj = ArgsNamespace(
-                data_dir=DATA_DIR,
-                results_dir=RESULTS_DIR,
-                species=self.selected_species,
-                model=self.selected_model,
-                reasoning_level=self.selected_depth,
-                bench_file=BENCHMARKS_FILE
-                # scenarios_file is not needed by run_benchmarks
-            )
-            if not all([args_obj.species, args_obj.model, args_obj.reasoning_level]):
-                raise ValueError("Species, Model, and Depth must be selected.")
-
-            configured_logger.info(f"Delegating 'run all benchmarks' for {args_obj.species}, {args_obj.model}, {args_obj.reasoning_level} to thread...") # Use configured_logger
-
-            # Run the backend function in a thread
-            # run_benchmarks is synchronous but runs async logic internally
-            saved_output_file = await asyncio.to_thread(run_benchmarks, cli_args=args_obj)
-
-            self.run_status = "Completed Benchmarks Run"
-            if saved_output_file:
-                 self.notify(f"All Benchmarks run complete.\nResults saved to {os.path.basename(saved_output_file)}.\nSee Results Browser.", title="Success", timeout=8)
-            else:
-                 self.notify("Benchmarks run finished, but failed to save results. Check logs.", title="Warning", severity="warning", timeout=8)
-
-            # Refresh results browser
-            try:
-                 browser_view = self.query_one(ResultsBrowserView)
-                 browser_view._populate_file_list()
-            except Exception as browse_e:
-                 self.log.warning(f"Could not refresh browser list after running benchmarks: {browse_e}") # Use self.log
-
-        except ImportError as e:
-             self.run_status = f"Error: Import failed ({e})"
-             self.notify(f"Import Error: {e}", severity="error")
-             configured_logger.error(f"Import Error in action_run_benchmarks: {e}\n{traceback.format_exc()}") # Use configured_logger
-        except ValueError as e:
-             self.run_status = f"Error: Config ({e})"
-             self.notify(f"Config Error: {e}", severity="error")
-             configured_logger.error(f"Config Error in action_run_benchmarks: {e}") # Use configured_logger
-        except Exception as e:
-             self.run_status = f"Error: {e}"
-             self.notify(f"Runtime Error: {e}", severity="error")
-             configured_logger.error(f"Runtime Error in action_run_benchmarks: {e}\n{traceback.format_exc()}") # Use configured_logger
-    # --- End Refactored Actions ---
-
+    # --- Methods moved to TaskQueueManager ---
+    # _update_task_status
+    # _execute_single_task
+    # _execute_all_scenarios
+    # _execute_all_benchmarks
+    # action_start_queue
+    # action_clear_queue
 
     # --- Event Handlers ---
-    def on_select_changed(self, event: Select.Changed) -> None:
+    def on_select_changed(self, event: Select.Changed) -> None: # Corrected indentation within this method
         """Handles changes in any Select widget."""
         select_id = event.select.id; new_value = event.value
         configured_logger.debug(f"on_select_changed triggered by '{select_id}' with value '{new_value}'") # Use configured_logger
@@ -515,32 +394,122 @@ class EthicsEngineApp(App):
             configured_logger.info(f"Depth selection changed to: {new_depth}") # Use configured_logger
         else: configured_logger.warning(f"Unhandled RadioSet change event from ID: {event.radio_set.id}") # Use configured_logger
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handles button presses."""
-        if event.button.id == "run-analysis-button":
-            if not self.selected_species or not self.selected_model or not self.selected_depth: self.notify("Please select Species, Model, and Depth.", severity="warning"); return
-            if not self.selected_task_item: self.notify("Please select a Task Item.", severity="warning"); return
-            asyncio.create_task(self.action_run_analysis())
-        elif event.button.id == "run-scenarios-button":
-             if not self.selected_species or not self.selected_model or not self.selected_depth: self.notify("Please select Species, Model, and Depth.", severity="warning"); return
-             asyncio.create_task(self.action_run_scenarios())
-        elif event.button.id == "run-benchmarks-button":
-             if not self.selected_species or not self.selected_model or not self.selected_depth: self.notify("Please select Species, Model, and Depth.", severity="warning"); return
-             asyncio.create_task(self.action_run_benchmarks())
-        elif event.button.id == "run-full-set-button":
-             if not self.selected_species or not self.selected_model or not self.selected_depth: self.notify("Please select Species, Model, and Depth.", severity="warning"); return
-             asyncio.create_task(self.action_run_full_set())
+    def on_button_pressed(self, event: Button.Pressed) -> None: # Corrected indentation and removed await
+        """Handles button presses - Now adds tasks to the queue."""
+        button_id = event.button.id
+
+        # --- Queue Control Buttons ---
+        if button_id == "start-queue-button":
+            # Delegate to the manager
+            asyncio.create_task(self.task_queue_manager.action_start_queue())
+            return
+        if button_id == "clear-queue-button":
+            # Delegate to the manager
+            self.task_queue_manager.action_clear_queue()
+            return
+
+        # --- Task Adding Buttons (Delegate task creation to manager) ---
+        # Common validation for adding tasks
+        if not self.selected_species or not self.selected_model or not self.selected_depth:
+            self.notify("Please select Species, Model, and Depth before adding tasks.", severity="warning")
+            return
+
+        # Prepare base arguments
+        args_obj = ArgsNamespace(
+            data_dir=DATA_DIR, results_dir=RESULTS_DIR,
+            species=self.selected_species, model=self.selected_model,
+            reasoning_level=self.selected_depth,
+            bench_file=BENCHMARKS_FILE, scenarios_file=SCENARIOS_FILE
+        )
+        task_id = str(uuid.uuid4()) # Generate unique ID for the task
+
+        # --- Add Single Task ---
+        if button_id == "run-analysis-button":
+            if not self.selected_task_type or self.selected_task_item is None:
+                self.notify("Please select a Task Type and Task Item.", severity="warning")
+                return
+
+            # Find the selected item dictionary (similar logic to original action_run_analysis)
+            selected_item_dict = None
+            item_id_to_find = self.selected_task_item
+            current_task_type = self.selected_task_type
+
+            try:
+                if current_task_type == "Ethical Scenarios":
+                    if isinstance(self.scenarios, list):
+                        selected_item_dict = next((item for item in self.scenarios if isinstance(item, dict) and item.get("id") == item_id_to_find), None)
+                    if not selected_item_dict:
+                        raise ValueError(f"Scenario ID '{item_id_to_find}' not found.")
+                elif current_task_type == "Benchmarks":
+                    # Re-verified again: Removed await from load_benchmarks (it's synchronous)
+                    benchmarks_data = load_benchmarks(args_obj.bench_file)
+                    target_benchmarks = benchmarks_data if isinstance(benchmarks_data, list) else []
+                    if not target_benchmarks:
+                        raise ValueError("No benchmark data found or loaded.")
+                    selected_item_dict = next((item for item in target_benchmarks if isinstance(item, dict) and str(item.get("question_id")) == item_id_to_find), None)
+                    if not selected_item_dict:
+                        raise ValueError(f"Benchmark QID '{item_id_to_find}' not found.")
+                else:
+                    raise ValueError(f"Invalid task type selected: {current_task_type}")
+
+                # Create task dictionary
+                task = {
+                    "id": task_id,
+                    "type": "single",
+                    "task_type": current_task_type, # "Ethical Scenarios" or "Benchmarks"
+                    "item_id": item_id_to_find,
+                    "species": self.selected_species,
+                    "model": self.selected_model,
+                    "depth": self.selected_depth,
+                    "args": args_obj,
+                    "item_dict": selected_item_dict, # The actual scenario/benchmark data
+                    "status": "Pending"
+                }
+                # Delegate adding to the manager
+                self.task_queue_manager.add_task_to_queue(task)
+                self.notify(f"Added '{current_task_type}' task (ID: {item_id_to_find}) to queue.", title="Task Queued")
+                # Logging is handled within add_task_to_queue
+
+            except ValueError as e:
+                self.notify(f"Error preparing task: {e}", severity="error")
+                configured_logger.error(f"Error preparing single task for queue: {e}")
+            except Exception as e:
+                 self.notify(f"Unexpected error preparing task: {e}", severity="error")
+                 configured_logger.error(f"Unexpected error preparing single task: {e}", exc_info=True)
+
+
+        # --- Add All Scenarios Task ---
+        elif button_id == "run-scenarios-button":
+            task = {
+                "id": task_id,
+                "type": "all_scenarios",
+                "species": self.selected_species,
+                "model": self.selected_model,
+                "depth": self.selected_depth,
+                "args": args_obj,
+                "item_dict": None, # Not applicable for bulk runs
+                "status": "Pending"
+            }
+            # Delegate adding to the manager
+            self.task_queue_manager.add_task_to_queue(task)
+            self.notify("Added 'Run All Scenarios' task to queue.", title="Task Queued")
+            # Logging is handled within add_task_to_queue
+
+        # --- Add All Benchmarks Task ---
+        elif button_id == "run-benchmarks-button":
+            task = {
+                "id": task_id,
+                "type": "all_benchmarks",
+                "species": self.selected_species,
+                "model": self.selected_model,
+                "depth": self.selected_depth,
+                "args": args_obj,
+                "item_dict": None, # Not applicable for bulk runs
+                "status": "Pending"
+            }
+            # Delegate adding to the manager
+            self.task_queue_manager.add_task_to_queue(task)
+            self.notify("Added 'Run All Benchmarks' task to queue.", title="Task Queued")
+            # Logging is handled within add_task_to_queue
+
     # --- End Event Handlers ---
-
-
-# Main execution guard
-if __name__ == "__main__":
-    # Basic check for essential data files
-    essential_files = [SCENARIOS_FILE, GOLDEN_PATTERNS_FILE, SPECIES_FILE, BENCHMARKS_FILE]
-    missing_files = [f for f in essential_files if not f.exists()]
-    if missing_files: print(f"Warning: Essential data files missing in '{DATA_DIR}/': {[f.name for f in missing_files]}")
-    # Ensure results directory exists
-    try: RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception as e: print(f"Error creating results directory {RESULTS_DIR}: {e}")
-
-    EthicsEngineApp().run()
