@@ -24,12 +24,12 @@ The `EthicsAgent` receives these inputs and applies decision trees to resolve et
 
 ## Components
 
-- `reasoning_agent.py` – Defines the EthicsAgent and core reasoning logic
-- `run_benchmarks.py` – Evaluates responses to static ethical questions
-- `run_scenarios.py` – Simulates dynamic planning, execution, and judgment for scenarios
-- `run_scenario_pipelines.py` – Similar to `run_scenarios` but organized as pipelines
+- `ethicsengine.py` – Main entry point for launching the UI or running CLI tasks.
+- `reasoning_agent.py` – Defines the EthicsAgent and core reasoning logic.
+- `dashboard/` – Contains the Textual-based interactive dashboard UI.
+- `config/` – Configuration files for settings and logging.
 
-## Data Files
+## Data Files in data/
 
 - `species.json` – Defines traits for each fictional species
 - `golden_patterns.json` – Describes ethical models and principles
@@ -42,16 +42,23 @@ Install dependencies:
 
     pip install -r requirements.txt
 
-Set your OpenAI API key as an environment variable.
-
-To run basic examples:
-
-    python run_benchmarks.py --model Deontological --species Jiminies
-    python run_scenarios.py --model Utilitarian --species Megacricks
+Set your OpenAI API key as an environment variable (or configure in `config/settings.json`).
 
 To launch the interactive UI:
 
-    python3 -m dashboard.interactive_dashboard
+    python ethicsengine.py
+
+![Textual Dashboard Screenshot](EthicsDash.png)
+
+To run tasks via the command line:
+
+    # Run benchmarks with specific parameters
+    python ethicsengine.py --run-benchmarks --model Deontological --species Jiminies --reasoning-level medium
+
+    # Run scenarios with specific parameters
+    python ethicsengine.py --run-scenarios --model Utilitarian --species Megacricks --reasoning-level high
+
+Other command-line arguments include `--data-dir`, `--results-dir`, `--bench-file`, and `--scenarios-file` to customize data sources and output locations.
 
 ![Textual Dashboard Screenshot](EthicsDash.png)
 
