@@ -11,15 +11,15 @@ EthicsEngine simulates how different agents reason through moral problems using:
 - Reasoning Type (e.g., Deontological, Utilitarian)
 - Reasoning Level (Low, Medium, High)
 - Species (Fictional societal structures with unique ethical values)
-- LLM Backend (Currently tested with GPT-4o-mini)
+- LLM Backend (Currently tested with GPT-4o-mini, supports any model supported by ag2.ai)
 
-The `EthicsAgent` receives these inputs and applies decision trees to resolve ethical benchmarks and complex scenario pipelines.
+The `EthicsAgent` receives these inputs and applies decision trees to resolve benchmarks and complex scenario pipelines.
 
 ### Workflow
 
 1. Inputs are configured from JSON files (species, golden patterns, scenarios)
 2. Agents simulate ethical reasoning using AutoGen
-3. Outputs from benchmarks and scenarios are judged for correctness or ethical alignment
+3. Outputs from benchmarks are judged for correctness
 4. Results are saved and optionally visualized
 
 ## Components
@@ -59,8 +59,6 @@ To run tasks via the command line:
     python ethicsengine.py --run-scenarios --model Utilitarian --species Megacricks --reasoning-level high
 
 Other command-line arguments include `--data-dir`, `--results-dir`, `--bench-file`, and `--scenarios-file` to customize data sources and output locations.
-
-![Textual Dashboard Screenshot](EthicsDash.png)
 
 ## Contributing
 
