@@ -5,7 +5,7 @@
       "api_key": "env:OPENAI_API_KEY"
     }
   ],
-  "concurrency": 100,
+  "concurrency": 10,
   "log_level": "INFO",
   "agent_timeout": 300.0,
   "reasoning_specs": {

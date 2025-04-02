@@ -78,7 +78,11 @@ TASK_TYPE_OPTIONS = ["Ethical Scenarios", "Benchmarks"]
 
 class EthicsEngineApp(App):
     CSS_PATH = "dashboard.tcss"
-    BINDINGS = [ Binding("q", "quit", "Quit"), ]
+    # Bind both 'q' and 'ctrl+c' to quit
+    BINDINGS = [
+        Binding("q", "quit", "Quit"),
+        Binding("ctrl+c", "quit", "Quit (Ctrl+C)"),
+    ]
 
     # Reactive Properties
     run_status = reactive("Ready")

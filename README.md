@@ -26,8 +26,9 @@ The `EthicsAgent` receives these inputs and applies decision trees to resolve be
 
 - `ethicsengine.py` – Main entry point for launching the UI or running CLI tasks.
 - `reasoning_agent.py` – Defines the EthicsAgent and core reasoning logic.
-- `dashboard/` – Contains the Textual-based interactive dashboard UI.
+- `dashboard/` – Contains the Textual-based interactive dashboard UI, featuring task queue management for handling simulations efficiently.
 - `config/` – Configuration files for settings and logging.
+- `upload_results.py` – Script for uploading simulation results to AWS S3.
 
 ## Data Files in data/
 
@@ -58,7 +59,14 @@ To run tasks via the command line:
     # Run scenarios with specific parameters
     python ethicsengine.py --run-scenarios --model Utilitarian --species Megacricks --reasoning-level high
 
-Other command-line arguments include `--data-dir`, `--results-dir`, `--bench-file`, and `--scenarios-file` to customize data sources and output locations.
+    # Run multiple benchmark configurations defined in settings.json
+    python ethicsengine.py --run-multiples
+
+    # Upload results from a specific directory to AWS S3
+    # Ensure AWS credentials are configured (e.g., via environment variables or IAM role)
+    python upload_results.py --results-dir path/to/your/results --bucket your-s3-bucket-name
+
+Other command-line arguments for `ethicsengine.py` include `--data-dir`, `--results-dir`, `--bench-file`, and `--scenarios-file` to customize data sources and output locations.
 
 ## Contributing
 

@@ -178,3 +178,7 @@ results/
 
 #logs
 app.log
+
+#splash
+splash/
+
