@@ -2,3 +2,4 @@
 - add tree view to the results browser
 - add support for submitter name and email in results files
 - add splash animation
+- update results when task completes, not when queue is done

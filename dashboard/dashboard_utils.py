@@ -1,10 +1,9 @@
-# dashboard/dashboard_utils.py
 import json
 import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-import argparse # Added import
+import argparse
 
 # Attempt to import logger and config elements for use in utils
 try:
@@ -17,9 +16,7 @@ except ImportError:
     llm_config_obj = None # Indicate config is unavailable
     AG2_REASONING_SPECS = {} # Empty specs
 
-# --- Helper Class (Moved from interactive_dashboard.py) ---
 class ArgsNamespace(argparse.Namespace): # Inherit from argparse.Namespace for compatibility
-    # Helper class to mimic argparse Namespace
     def __init__(self, data_dir, results_dir, species, model, reasoning_level, bench_file=None, scenarios_file=None):
         super().__init__() # Initialize base class
         self.data_dir = str(data_dir); self.results_dir = str(results_dir); self.species = species; self.model = model; self.reasoning_level = reasoning_level; self.bench_file = str(bench_file) if bench_file else None; self.scenarios_file = str(scenarios_file) if scenarios_file else None
@@ -72,7 +69,6 @@ def save_json(file_path: Path, data: Any) -> bool:
 
     return success
 
-# --- NEW Utility Functions for Refactoring ---
 
 def load_metadata_dependencies(data_dir: Path) -> Dict[str, Any]:
     """Loads species and model data required for metadata generation."""
@@ -247,4 +243,3 @@ def save_results_with_standard_name(
         logger.error(f"Error in save_results_with_standard_name: {e}", exc_info=True)
         return None
 
-# --- END NEW Utility Functions ---

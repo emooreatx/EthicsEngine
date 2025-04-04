@@ -122,8 +122,6 @@ def main():
     # Configure Console Logging Conditionally (only for CLI actions)
     if run_action:
         console_handler = logging.StreamHandler(sys.stderr)
-        # formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s') # Optional formatter
-        # console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
         logger.info(f"Console logging enabled for CLI action: {run_action}")
     else:

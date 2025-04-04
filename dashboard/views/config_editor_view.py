@@ -135,7 +135,6 @@ class ConfigEditorView(Static):
         except json.JSONDecodeError:
             self.query_one("#status-message", Static).update(f"[bold red]Error: Invalid JSON in {SETTINGS_FILE_PATH}.[/]")
             logger.error(f"Invalid JSON in settings file {SETTINGS_FILE_PATH}", exc_info=True)
-            # Show empty/defaults?
         except Exception as e:
             self.query_one("#status-message", Static).update(f"[bold red]Error loading settings: {e}[/]")
             logger.error(f"Unexpected error loading settings: {e}", exc_info=True)
@@ -252,8 +251,3 @@ class ConfigEditorView(Static):
         elif event.button.id == "clear-log-button":
             self.clear_log_file()
 
-    # Watchers for reactive variables (optional, could update UI directly)
-    # Example:
-    # def watch_status_message(self, new_message: str) -> None:
-    #     status_widget = self.query_one("#status-message", Static)
-    #     status_widget.update(new_message)

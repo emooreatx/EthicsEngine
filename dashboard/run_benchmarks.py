@@ -53,8 +53,8 @@ def parse_args():
     parser.add_argument("--data-dir", default="data", help="Path to the data directory")
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--bench-file", default=os.path.join("data", "simple_bench_public.json"), help="Path to the benchmark file")
-    parser.add_argument("--species", default="Jiminies", help="Species name")
-    parser.add_argument("--model", default="Deontological", help="Reasoning model")
+    parser.add_argument("--species", default="Neutral", help="Species name") # Default changed to Neutral
+    parser.add_argument("--model", default="Agentic", help="Reasoning model") # Default changed to Agentic
     parser.add_argument("--reasoning-level", default="low", choices=["low", "medium", "high"], help="Reasoning level (low, medium, high)")
     parser.add_argument("-m", "--multiple-runs", type=int, default=1, help="Number of concurrent benchmark jobs to run") # Kept for direct run, but not used by ethicsengine call
     return parser.parse_args()
@@ -134,8 +134,8 @@ async def run_benchmarks_async(cli_args=None):
     args = cli_args if cli_args is not None else argparse.Namespace()
 
     # --- Determine effective arguments using getattr with defaults ---
-    default_species = "Jiminies"
-    default_model = "Deontological"
+    default_species = "Neutral" # Default changed to Neutral
+    default_model = "Agentic" # Default changed to Agentic
     default_reasoning_level = "low"
     default_data_dir = "data"
     default_results_dir = "results"
@@ -301,8 +301,8 @@ async def run_and_save_single_benchmark(item_dict: dict, args: argparse.Namespac
     # --- Create Agent ---
     try:
         # Apply defaults for single run agent creation
-        default_species = "Jiminies"
-        default_model = "Deontological"
+        default_species = "Neutral" # Default changed to Neutral
+        default_model = "Agentic" # Default changed to Agentic
         default_reasoning_level = "low"
         default_data_dir = "data"
         s_species = getattr(args, 'species', default_species)

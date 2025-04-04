@@ -3,19 +3,17 @@ import traceback
 import uuid
 import os
 from pathlib import Path
-import argparse # For ArgsNamespace if needed directly, or passed from app
+import argparse
 
-# Import necessary components from Textual or pass app instance
-# from textual.app import App - Avoid direct App import if possible
+# Import necessary components from Textual
 from textual.widgets import ListView, ListItem, Label # For type hinting if needed
 
 # Import backend logic and utils (relative imports assuming structure)
-from .dashboard_utils import load_json, save_json, SCENARIOS_FILE, GOLDEN_PATTERNS_FILE, SPECIES_FILE, BENCHMARKS_FILE, DATA_DIR, RESULTS_DIR, ArgsNamespace # Added ArgsNamespace import
+from .dashboard_utils import load_json, save_json, SCENARIOS_FILE, GOLDEN_PATTERNS_FILE, SPECIES_FILE, BENCHMARKS_FILE, DATA_DIR, RESULTS_DIR, ArgsNamespace
 from config.config import logger, semaphore # Import logger (correct name) and semaphore
 # Import run functions
 from .run_scenario_pipelines import run_all_scenarios_async, run_and_save_single_scenario
 from .run_benchmarks import run_benchmarks_async, run_and_save_single_benchmark, load_benchmarks
-# ArgsNamespace is now imported from dashboard_utils above
 
 
 class TaskQueueManager:

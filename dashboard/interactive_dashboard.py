@@ -1,4 +1,3 @@
-# dashboard/interactive_dashboard.py
 import sys
 import os
 
@@ -20,8 +19,8 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal, Vertical
 from textual.widgets import Header, Footer, Button, Static, Select, Label, Markdown, LoadingIndicator, TabbedContent, TabPane, RadioSet, RadioButton, ListView, ListItem
 from textual.binding import Binding
-from textual.reactive import reactive # Ensure list_validator is removed
-from textual.widgets import ListView, ListItem, Label # Added for watch_task_queue type hinting if needed
+from textual.reactive import reactive
+from textual.widgets import ListView, ListItem, Label
 from textual.markup import escape # Import escape
 
 # Import Views
@@ -39,7 +38,7 @@ except ImportError as e:
 
 # Import Utils
 try:
-    from dashboard.dashboard_utils import (load_json, save_json, SCENARIOS_FILE, GOLDEN_PATTERNS_FILE, SPECIES_FILE, BENCHMARKS_FILE, DATA_DIR, RESULTS_DIR, ArgsNamespace) # Added ArgsNamespace import
+    from dashboard.dashboard_utils import (load_json, save_json, SCENARIOS_FILE, GOLDEN_PATTERNS_FILE, SPECIES_FILE, BENCHMARKS_FILE, DATA_DIR, RESULTS_DIR, ArgsNamespace)
 except ImportError as e:
      print(f"Fatal Error: Could not import dashboard utils: {e}")
      import logging; logging.basicConfig(level=logging.ERROR); logging.error(f"Fatal Error: Import utils: {e}", exc_info=True); exit()
@@ -73,7 +72,6 @@ from .task_queue_manager import TaskQueueManager # Added import
 REASONING_DEPTH_OPTIONS = ["low", "medium", "high"]
 TASK_TYPE_OPTIONS = ["Ethical Scenarios", "Benchmarks"]
 
-# ArgsNamespace class definition removed, now imported from dashboard_utils
 
 
 class EthicsEngineApp(App):
@@ -93,23 +91,22 @@ class EthicsEngineApp(App):
     selected_task_type = reactive(TASK_TYPE_OPTIONS[0])
     selected_task_item = reactive(None) # Holds the ID of the selected scenario/benchmark
     loading = reactive(False) # Tracks if the *queue* is running
-    task_queue = reactive(list[dict]) # Ensure validation is removed
+    task_queue = reactive(list[dict])
     is_queue_processing = reactive(False) # Flag to prevent multiple queue runs
 
     def __init__(self):
         # Ensure logger is available before using it
         try:
-            configured_logger.debug("App.__init__: START") # DEBUG LOG
+            configured_logger.debug("App.__init__: START")
         except NameError: # Fallback if logger isn't imported yet (shouldn't happen here)
             print("App.__init__: START (Logger not ready)")
         super().__init__()
-        configured_logger.debug("App.__init__: super().__init__() finished") # DEBUG LOG
-        # --- Logger is imported as configured_logger ---
+        configured_logger.debug("App.__init__: super().__init__() finished")
         self.task_queue_manager = TaskQueueManager(self) # Instantiate the manager
-        configured_logger.debug("App.__init__: TaskQueueManager instantiated") # DEBUG LOG
+        configured_logger.debug("App.__init__: TaskQueueManager instantiated")
 
         # Load initial data
-        configured_logger.debug("App.__init__: Loading scenarios...") # DEBUG LOG
+        configured_logger.debug("App.__init__: Loading scenarios...")
         self.scenarios = load_json(SCENARIOS_FILE, [])
         if isinstance(self.scenarios, dict) and "Error" in self.scenarios:
              configured_logger.error(f"Failed to load scenarios: {self.scenarios['Error']}") # Use configured_logger
@@ -117,30 +114,44 @@ class EthicsEngineApp(App):
         elif not isinstance(self.scenarios, list):
              configured_logger.error(f"Scenarios file {SCENARIOS_FILE} is not a list. Content: {self.scenarios}") # Use configured_logger
              self.scenarios = [{"id": "FORMAT_ERROR", "prompt": "Error: scenarios.json is not a list."}]
-        configured_logger.debug("App.__init__: Scenarios loaded.") # DEBUG LOG
+        configured_logger.debug("App.__init__: Scenarios loaded.")
 
-        configured_logger.debug("App.__init__: Loading models...") # DEBUG LOG
+        configured_logger.debug("App.__init__: Loading models...")
         self.models = load_json(GOLDEN_PATTERNS_FILE, {"Error": "Could not load models"})
         if "Error" in self.models: configured_logger.error(f"Failed to load models: {self.models['Error']}") # Use configured_logger
-        configured_logger.debug("App.__init__: Models loaded.") # DEBUG LOG
+        configured_logger.debug("App.__init__: Models loaded.")
 
-        configured_logger.debug("App.__init__: Loading species...") # DEBUG LOG
+        configured_logger.debug("App.__init__: Loading species...")
         self.species = load_json(SPECIES_FILE, {"Error": "Could not load species"})
         if "Error" in self.species: configured_logger.error(f"Failed to load species: {self.species['Error']}") # Use configured_logger
-        configured_logger.debug("App.__init__: Species loaded.") # DEBUG LOG
+        configured_logger.debug("App.__init__: Species loaded.")
 
-        configured_logger.debug("App.__init__: Loading benchmarks...") # DEBUG LOG
+        configured_logger.debug("App.__init__: Loading benchmarks...")
         self.benchmarks_data_struct = load_json(BENCHMARKS_FILE, {"Error": "Could not load benchmarks"})
         if "Error" in self.benchmarks_data_struct: configured_logger.error(f"Failed to load benchmarks: {self.benchmarks_data_struct['Error']}") # Use configured_logger
-        configured_logger.debug("App.__init__: Benchmarks loaded.") # DEBUG LOG
+        configured_logger.debug("App.__init__: Benchmarks loaded.")
 
-        # Set initial selections
-        configured_logger.debug("App.__init__: Setting initial selections...") # DEBUG LOG
-        if isinstance(self.species, dict) and "Error" not in self.species: self.selected_species = next(iter(self.species), None)
-        if isinstance(self.models, dict) and "Error" not in self.models: self.selected_model = next(iter(self.models), None)
-        configured_logger.debug("App.__init__: Calling _update_initial_task_item...") # DEBUG LOG
+        # Set initial selections (Neutral Species, Agentic Model)
+        configured_logger.debug("App.__init__: Setting initial selections...")
+        # Default Species to "Neutral" if available, else first
+        if isinstance(self.species, dict) and "Error" not in self.species:
+            self.selected_species = "Neutral" if "Neutral" in self.species else next(iter(self.species), None)
+            configured_logger.info(f"Default species set to: {self.selected_species}")
+        else:
+            self.selected_species = None
+            configured_logger.warning("Could not set default species due to load error or empty data.")
+
+        # Default Model/Pattern to "Agentic" if available, else first
+        if isinstance(self.models, dict) and "Error" not in self.models:
+            self.selected_model = "Agentic" if "Agentic" in self.models else next(iter(self.models), None)
+            configured_logger.info(f"Default model/pattern set to: {self.selected_model}")
+        else:
+            self.selected_model = None
+            configured_logger.warning("Could not set default model/pattern due to load error or empty data.")
+
+        configured_logger.debug("App.__init__: Calling _update_initial_task_item...")
         self._update_initial_task_item()
-        configured_logger.debug("App.__init__: FINISHED") # DEBUG LOG
+        configured_logger.debug("App.__init__: FINISHED")
 
     def _update_initial_task_item(self):
         """Sets the initial selected task item ID based on the current task type."""
@@ -349,13 +360,6 @@ class EthicsEngineApp(App):
             # Use self.log which is safer during startup/shutdown
             self.log.error(f"Error updating #queue-list view in watch_task_queue: {e}", exc_info=True)
 
-    # --- Methods moved to TaskQueueManager ---
-    # _update_task_status
-    # _execute_single_task
-    # _execute_all_scenarios
-    # _execute_all_benchmarks
-    # action_start_queue
-    # action_clear_queue
 
     # --- Event Handlers ---
     def on_select_changed(self, event: Select.Changed) -> None: # Corrected indentation within this method

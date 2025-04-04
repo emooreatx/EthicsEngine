@@ -64,8 +64,8 @@ def parse_args():
     parser.add_argument("--data-dir", default="data", help="Path to the data directory")
     parser.add_argument("--scenarios-file", default=os.path.join("data","scenarios.json"), help="Path to scenarios file (expects list format)")
     parser.add_argument("--results-dir", default="results", help="Directory to save the results")
-    parser.add_argument("--species", default="Jiminies", help="Species name (for planner & executor)")
-    parser.add_argument("--model", default="Deontological", help="Reasoning model (for planner & executor)")
+    parser.add_argument("--species", default="Neutral", help="Species name (for planner & executor)") # Default changed to Neutral
+    parser.add_argument("--model", default="Agentic", help="Reasoning model (for planner & executor)") # Default changed to Agentic
     parser.add_argument("--reasoning-level", default="low", choices=["low", "medium", "high"], help="Reasoning level (low, medium, high)")
     return parser.parse_args()
 
@@ -175,8 +175,8 @@ async def run_all_scenarios_async(cli_args=None): # Accept optional args like ru
 
     # --- Determine effective arguments using getattr with defaults ---
     # Re-introduce default handling similar to the old sync wrapper
-    default_species = "Jiminies"
-    default_model = "Deontological"
+    default_species = "Neutral" # Default changed to Neutral
+    default_model = "Agentic" # Default changed to Agentic
     default_reasoning_level = "low"
     default_data_dir = "data"
     default_results_dir = "results"
@@ -367,5 +367,3 @@ async def run_and_save_single_scenario(scenario_dict: dict, args: argparse.Names
     return saved_file_path
 # --- End New Function ---
 
-# Removed the synchronous wrapper function run_all_scenarios
-# Removed the if __name__ == "__main__": block
