@@ -45,6 +45,7 @@ except ImportError as e:
 # Moved import to top level to potentially resolve startup issues
 # Add more specific error logging during import
 EthicsEngineApp = None # Initialize as None
+SplashApp = None # Initialize SplashApp as None
 try:
     from dashboard.interactive_dashboard import EthicsEngineApp
 except ImportError as e_imp:
@@ -57,6 +58,17 @@ except Exception as e_other:
     print(f"ERROR: An unexpected error occurred during EthicsEngineApp import: {e_other}", file=sys.stderr)
     # Ensure EthicsEngineApp remains None
     EthicsEngineApp = None
+
+# --- Import Splash App ---
+try:
+    from splash.splash import SplashApp
+except ImportError as e_imp_splash:
+    logger.error(f"Failed to import SplashApp due to ImportError: {e_imp_splash}. Splash screen will not be shown.", exc_info=True)
+    print(f"WARNING: Failed to import SplashApp due to ImportError: {e_imp_splash}", file=sys.stderr)
+except Exception as e_other_splash:
+    logger.error(f"An unexpected error occurred during SplashApp import: {e_other_splash}. Splash screen will not be shown.", exc_info=True)
+    print(f"WARNING: An unexpected error occurred during SplashApp import: {e_other_splash}", file=sys.stderr)
+    SplashApp = None # Ensure SplashApp is None if import fails
 
 try:
     from dashboard.run_benchmarks import run_benchmarks_async, monitor_semaphore_cli
@@ -399,19 +411,33 @@ def main():
             sys.exit(1)
 
     else: # Default to UI
-        if EthicsEngineApp: # Check if import was successful at the top level
+        # --- MODIFICATION START ---
+        # Run Splash Screen first if available
+        if SplashApp:
             try:
+                logger.info("Starting splash screen...")
+                SplashApp().run()
+                logger.info("Splash screen finished.")
+            except Exception as e_splash:
+                logger.error(f"An error occurred while running the splash screen: {e_splash}", exc_info=True)
+                print(f"WARNING: An error occurred during splash screen: {e_splash}", file=sys.stderr)
+                # Continue to main app even if splash fails
+
+        # Now run the main dashboard app if available
+        if EthicsEngineApp:
+            try:
+                logger.info("Starting main dashboard UI...")
                 EthicsEngineApp().run()
-            except Exception as e:
+            except Exception as e_main_app:
                 # Catch errors during instantiation or run()
-                logger.error(f"An error occurred while instantiating or running the dashboard: {e}", exc_info=True)
-                print(f"ERROR: An error occurred while running the dashboard: {e}", file=sys.stderr)
+                logger.error(f"An error occurred while instantiating or running the dashboard: {e_main_app}", exc_info=True)
+                print(f"ERROR: An error occurred while running the dashboard: {e_main_app}", file=sys.stderr)
                 sys.exit(1)
         else:
             # This case should now be hit if the import failed at the top level
             print("Error: Could not start the dashboard UI because EthicsEngineApp failed to import. Check logs.", file=sys.stderr)
             sys.exit(1)
-        # Removed the outer try/except Exception as it's now handled inside the 'if EthicsEngineApp' block
+        # --- MODIFICATION END ---
 
 if __name__ == "__main__":
     main()
