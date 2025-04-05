@@ -3,7 +3,7 @@ import json
 import sys
 import os
 
-# Hardcoded API endpoint from your provided URL
+# Hardcoded API endpoint for uploading results
 API_ENDPOINT = "https://otobspxsek.execute-api.us-east-1.amazonaws.com/prod/upload"
 
 def upload_file_to_aws(file_path: str) -> tuple[bool, str]:
@@ -21,7 +21,6 @@ def upload_file_to_aws(file_path: str) -> tuple[bool, str]:
     if not os.path.exists(file_path):
         return False, f"Error: File not found at {file_path}"
 
-    # Load the file content (assumes it's valid JSON)
     try:
         with open(file_path, 'r') as f:
             data = json.load(f)
@@ -32,10 +31,9 @@ def upload_file_to_aws(file_path: str) -> tuple[bool, str]:
 
     headers = {"Content-Type": "application/json"}
 
-    # Send the POST request to your API endpoint
     try:
         response = requests.post(API_ENDPOINT, json=data, headers=headers)
-        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        response.raise_for_status()
 
         return True, f"Successfully uploaded {os.path.basename(file_path)}. Status: {response.status_code}, Response: {response.text}"
 

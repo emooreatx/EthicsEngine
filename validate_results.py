@@ -1,10 +1,19 @@
+"""
+Script to validate JSON result files against a defined schema.
+
+This script iterates through all .json files in the specified RESULTS_DIR
+and validates their structure against the schema defined in SCHEMA_FILE
+using the jsonschema library. It prints the validation status for each file.
+"""
 import json
 import os
 from jsonschema import validate, ValidationError
 
-RESULTS_DIR = "results"
-SCHEMA_FILE = "output_schema.json"
+# --- Constants ---
+RESULTS_DIR = "results" # Directory containing result files to validate
+SCHEMA_FILE = "output_schema.json" # Path to the JSON schema file
 
+# --- Helper Function ---
 def load_json(filepath):
     """Loads JSON data from a file."""
     try:
@@ -50,7 +59,6 @@ def validate_results():
                 except ValidationError as e:
                     invalid_files += 1
                     print(f"❌ {filename}: INVALID")
-                    # Print a concise version of the error
                     print(f"   Error: {e.message} (Path: {'/'.join(map(str, e.path))})")
                 except Exception as e:
                     invalid_files += 1

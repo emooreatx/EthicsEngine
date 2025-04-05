@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 EthicsEngine Main Entry Point
-
 This script serves as the main entry point for the EthicsEngine application.
 It handles command-line argument parsing to determine whether to launch the
 interactive Textual UI dashboard or execute specific tasks via the command line,
@@ -10,21 +9,24 @@ such as running benchmark suites or scenario pipelines.
 It also configures logging based on settings loaded from config/config.py
 and command-line arguments.
 """
+# --- Standard Library Imports ---
 import argparse
 import logging
 import sys
 import os
 import asyncio
+
+# --- Project Imports ---
 from reasoning_agent import EthicsAgent
 
-# Ensure the project root is in the Python path
+# --- Project Path Setup ---
 project_root = os.path.dirname(os.path.abspath(__file__))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # --- Configuration Loading ---
-# Attempt to load configuration, including log settings
 try:
+    # Attempt to load configuration, including log settings and semaphore
     from config.config import settings, logger, LOG_FILE_PATH, semaphore
     log_level_setting = settings.get("log_level", "INFO")
     log_level = getattr(logging, log_level_setting.upper(), logging.INFO)
@@ -33,59 +35,45 @@ except ImportError as e:
     semaphore = None
     LOG_FILE_PATH = "app.log"
     log_level = logging.INFO
-    logger = logging.getLogger()
+    logger = logging.getLogger() # Use root logger as fallback
     logger.warning(f"Could not import configuration from config.config: {e}. Using default log level INFO.")
 
-# --- Logging Setup (Deferred) ---
-# Logging is configured within main() after parsing arguments.
-
-# --- Import Run Functions ---
-# Import the potentially async entry points and semaphore monitor function
-# --- Import Dashboard App ---
-# Moved import to top level to potentially resolve startup issues
-# Add more specific error logging during import
+# --- Dashboard App Import (Conditional) ---
 EthicsEngineApp = None # Initialize as None
-SplashApp = None # Initialize SplashApp as None
 try:
+    # Import the main Textual app class
     from dashboard.interactive_dashboard import EthicsEngineApp
 except ImportError as e_imp:
-    # Log the specific ImportError
+    # Log the specific ImportError if UI cannot be loaded
     logger.error(f"Failed to import EthicsEngineApp due to ImportError: {e_imp}. UI will not be available.", exc_info=True)
     print(f"ERROR: Failed to import EthicsEngineApp due to ImportError: {e_imp}", file=sys.stderr)
 except Exception as e_other:
     # Catch any other exception during import
     logger.error(f"An unexpected error occurred during EthicsEngineApp import: {e_other}. UI will not be available.", exc_info=True)
     print(f"ERROR: An unexpected error occurred during EthicsEngineApp import: {e_other}", file=sys.stderr)
-    # Ensure EthicsEngineApp remains None
-    EthicsEngineApp = None
+    EthicsEngineApp = None # Ensure EthicsEngineApp remains None
 
-# --- Import Splash App ---
+# --- CLI Run Function Imports (Conditional) ---
 try:
-    from splash.splash import SplashApp
-except ImportError as e_imp_splash:
-    logger.error(f"Failed to import SplashApp due to ImportError: {e_imp_splash}. Splash screen will not be shown.", exc_info=True)
-    print(f"WARNING: Failed to import SplashApp due to ImportError: {e_imp_splash}", file=sys.stderr)
-except Exception as e_other_splash:
-    logger.error(f"An unexpected error occurred during SplashApp import: {e_other_splash}. Splash screen will not be shown.", exc_info=True)
-    print(f"WARNING: An unexpected error occurred during SplashApp import: {e_other_splash}", file=sys.stderr)
-    SplashApp = None # Ensure SplashApp is None if import fails
-
-try:
+    # Import functions needed for CLI execution modes
     from dashboard.run_benchmarks import run_benchmarks_async, monitor_semaphore_cli
     from dashboard.run_scenario_pipelines import run_all_scenarios_async
-except Exception as e: # Catch any exception during these imports
+except Exception as e:
     # Log the error more generically, but still provide details
     logger.error(f"Failed during import of run functions from dashboard: {e}. CLI runs may not be available.", exc_info=True)
     print(f"ERROR: Failed during import of run functions: {e}", file=sys.stderr)
-    # Define dummy async functions if import fails.
+    # Define dummy async functions if import fails to prevent crashes later
     async def run_benchmarks_async(*args, **kwargs): logger.error("run_benchmarks_async function not available due to import error.")
     async def monitor_semaphore_cli(*args, **kwargs): logger.error("monitor_semaphore_cli function not available due to import error.")
     async def run_all_scenarios_async(*args, **kwargs): logger.error("run_all_scenarios_async function not available due to import error.")
 
+# --- Main Function ---
 def main():
+    """Parses command-line arguments, configures logging, and executes the selected action (UI or CLI task)."""
+    # --- Argument Parsing ---
     parser = argparse.ArgumentParser(description="EthicsEngine: Run UI or Command-Line Tasks.")
 
-    # Mode Selection (Mutually Exclusive)
+    # Mode Selection (Mutually Exclusive Group)
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument('--ui', action='store_true', help='Launch the interactive dashboard UI (default if no other mode selected).')
     mode_group.add_argument('--run-benchmarks', action='store_true', help='Run the full benchmark suite via CLI.')
@@ -120,33 +108,38 @@ def main():
          run_action = "single_scenario"
     # UI is the default if no run action is specified
 
-    # Configure File Logging
+    # --- Logging Configuration ---
+    # Configure File Logging (always enabled)
     # Use force=True to ensure reconfiguration if basicConfig was called implicitly elsewhere.
     logging.basicConfig(
-        level=log_level,
+        level=log_level, # Level loaded from config or default
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        filename=LOG_FILE_PATH,
-        filemode='a',
-        force=True
+        filename=LOG_FILE_PATH, # Path loaded from config or default
+        filemode='a', # Append mode
+        force=True # Overwrite any existing handlers
     )
     logger.info(f"File logging configured to {LOG_FILE_PATH} with level {log_level_setting}")
 
     # Configure Console Logging Conditionally (only for CLI actions)
     if run_action:
-        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler = logging.StreamHandler(sys.stderr) # Log to stderr
+        # Optionally set a different format/level for console
+        # console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
         logger.addHandler(console_handler)
         logger.info(f"Console logging enabled for CLI action: {run_action}")
     else:
-        # Remove existing StreamHandlers if running in UI mode to avoid duplicates.
+        # Remove existing StreamHandlers if running in UI mode to avoid duplicates
+        # (The Textual app manages its own display)
         for handler in logger.handlers[:]:
              if isinstance(handler, logging.StreamHandler):
                   logger.removeHandler(handler)
 
-    # --- Execute Action ---
+    # --- Action Execution ---
     if run_action == "benchmarks":
+        # --- Run Full Benchmark Suite ---
         logger.info("Executing benchmark run(s) via CLI...")
         try:
-            # Prepare args namespace for run_benchmarks_async
+            # Prepare args namespace specifically for run_benchmarks_async
             bench_args = argparse.Namespace(
                 species=args.species,
                 model=args.model,
@@ -155,7 +148,7 @@ def main():
                 results_dir=args.results_dir,
                 bench_file=args.bench_file
             )
-            # multiple_runs is handled by the wrapper
+            # Note: multiple_runs is handled by the wrapper below
 
             # Async Wrapper for Multiple Benchmark Runs
             async def run_multiple_benchmarks():
@@ -169,44 +162,49 @@ def main():
 
                 # Agent creation is handled within run_benchmarks_async
 
+                # Start the semaphore monitor task
                 monitor_task = asyncio.create_task(monitor_semaphore_cli(semaphore))
+                # Create tasks for each benchmark run
                 benchmark_tasks = [run_benchmarks_async(bench_args) for _ in range(num_runs)]
 
                 all_run_results = []
                 try:
+                    # Wait for all benchmark tasks to complete
                     all_run_results = await asyncio.gather(*benchmark_tasks, return_exceptions=True)
                 finally:
-                    # Ensure monitor task is cancelled and awaited
+                    # Ensure monitor task is cancelled and awaited regardless of benchmark success/failure
                     if monitor_task and not monitor_task.done():
                         monitor_task.cancel()
-                        await asyncio.gather(monitor_task, return_exceptions=True)
+                        await asyncio.gather(monitor_task, return_exceptions=True) # Wait for cancellation
                     logger.info("All benchmark runs gather completed.")
 
-                # Log results/errors
+                # Log results/errors from each run
                 success_count = 0
                 for i, result_or_exc in enumerate(all_run_results):
                     if isinstance(result_or_exc, Exception):
                         logger.error(f"Benchmark run {i+1}/{num_runs} failed with exception: {result_or_exc}", exc_info=result_or_exc)
-                    elif result_or_exc is None:
+                    elif result_or_exc is None: # run_benchmarks_async returns None on internal failure
                         logger.error(f"Benchmark run {i+1}/{num_runs} failed (returned None, check logs for details).")
-                    else:
+                    else: # Success, result_or_exc is the saved file path
                         logger.info(f"Benchmark run {i+1}/{num_runs} completed successfully. Results saved to: {result_or_exc}")
                         success_count += 1
                 logger.info(f"Finished executing {num_runs} benchmark runs. Successful: {success_count}, Failed: {num_runs - success_count}.")
             # --- End Async Wrapper ---
 
-            # Execute the async wrapper function
+            # Execute the async wrapper function using asyncio.run
             asyncio.run(run_multiple_benchmarks())
 
         except Exception as e:
             logger.error(f"Error during CLI benchmark run setup or execution: {e}", exc_info=True)
             print(f"Error during benchmark run: {e}", file=sys.stderr)
             sys.exit(1)
+        # --- End Run Full Benchmark Suite ---
 
     elif run_action == "scenarios":
+        # --- Run Full Scenario Pipelines ---
         logger.info("Executing scenario pipelines run via CLI...")
         try:
-            # Prepare args namespace for run_all_scenarios_async
+            # Prepare args namespace specifically for run_all_scenarios_async
             scenario_args = argparse.Namespace(
                 species=args.species,
                 model=args.model,
@@ -215,7 +213,7 @@ def main():
                 results_dir=args.results_dir,
                 scenarios_file=args.scenarios_file
             )
-            # multiple_runs is handled by the wrapper
+            # Note: multiple_runs is handled by the wrapper below
 
             # Async Wrapper for Multiple Scenario Runs
             async def run_multiple_scenarios():
@@ -227,11 +225,14 @@ def main():
                      logger.error("Semaphore or monitor function not available. Cannot run scenarios concurrently.")
                      return
 
+                # Start the semaphore monitor task
                 monitor_task = asyncio.create_task(monitor_semaphore_cli(semaphore))
+                # Create tasks for each scenario run
                 scenario_tasks = [run_all_scenarios_async(scenario_args) for _ in range(num_runs)]
 
                 all_run_results = []
                 try:
+                    # Wait for all scenario tasks to complete
                     all_run_results = await asyncio.gather(*scenario_tasks, return_exceptions=True)
                 finally:
                     # Ensure monitor task is cancelled and awaited
@@ -240,14 +241,14 @@ def main():
                         await asyncio.gather(monitor_task, return_exceptions=True)
                     logger.info("All scenario runs gather completed.")
 
-                # Log results/errors
+                # Log results/errors from each run
                 success_count = 0
                 for i, result_or_exc in enumerate(all_run_results):
                     if isinstance(result_or_exc, Exception):
                         logger.error(f"Scenario run {i+1}/{num_runs} failed with exception: {result_or_exc}", exc_info=result_or_exc)
-                    elif result_or_exc is None:
+                    elif result_or_exc is None: # run_all_scenarios_async returns None on internal failure
                         logger.error(f"Scenario run {i+1}/{num_runs} failed (returned None, check logs for details).")
-                    else:
+                    else: # Success, result_or_exc is the saved file path
                         logger.info(f"Scenario run {i+1}/{num_runs} completed successfully. Results saved to: {result_or_exc}")
                         success_count += 1
                 logger.info(f"Finished executing {num_runs} scenario runs. Successful: {success_count}, Failed: {num_runs - success_count}.")
@@ -260,8 +261,10 @@ def main():
             logger.error(f"Error during CLI scenario run setup or execution: {e}", exc_info=True)
             print(f"Error during scenario run: {e}", file=sys.stderr)
             sys.exit(1)
+        # --- End Run Full Scenario Pipelines ---
 
     elif run_action == "single_benchmark":
+        # --- Run Single Benchmark Item ---
         logger.info("Executing single benchmark item run via CLI...")
         try:
             # Validate required args for this mode
@@ -275,15 +278,14 @@ def main():
             if not args.reasoning_level:
                 logger.warning("Missing --reasoning-level argument, using default.")
 
-            # Import necessary functions
+            # Import necessary functions dynamically within the block
             try:
                 from dashboard.run_benchmarks import run_and_save_single_benchmark, load_benchmarks
             except ImportError as e:
                 logger.error(f"Failed to import single benchmark run functions: {e}", exc_info=True)
                 raise # Re-raise to exit if essential functions are missing
 
-            # Prepare Args Namespace
-            # Define defaults for paths if not provided via CLI
+            # Prepare Args Namespace, applying defaults for paths if not provided
             default_data_dir = "data"
             default_results_dir = "results"
             default_bench_file = os.path.join(default_data_dir, "simple_bench_public.json")
@@ -292,6 +294,7 @@ def main():
             effective_results_dir = args.results_dir if args.results_dir else default_results_dir
             effective_bench_file = args.bench_file if args.bench_file else default_bench_file
 
+            # Create args specifically for the single run function
             single_run_args = argparse.Namespace(
                 species=args.species, # Pass None if not provided; function handles defaults
                 model=args.model,
@@ -319,8 +322,7 @@ def main():
 
             logger.info(f"Found benchmark item ID: {args.item_id}. Starting run...")
 
-            # Execute the single run
-            # run_and_save_single_benchmark is async, so wrap with asyncio.run
+            # Execute the single run (run_and_save_single_benchmark is async)
             saved_file = asyncio.run(run_and_save_single_benchmark(target_item, single_run_args))
 
             if saved_file:
@@ -328,21 +330,24 @@ def main():
             else:
                 logger.error(f"Single benchmark run for item ID {args.item_id} failed to save results.")
 
-        except ValueError as e:
+        except ValueError as e: # Catch specific configuration errors
              logger.error(f"Configuration error for single benchmark run: {e}")
              print(f"Error: {e}", file=sys.stderr)
              sys.exit(1)
-        except Exception as e:
+        except Exception as e: # Catch general errors during execution
             logger.error(f"Error during CLI single benchmark run: {e}", exc_info=True)
             print(f"Error during single benchmark run: {e}", file=sys.stderr)
             sys.exit(1)
+        # --- End Run Single Benchmark Item ---
 
     elif run_action == "single_scenario":
+        # --- Run Single Scenario Pipeline ---
         logger.info("Executing single scenario run via CLI...")
         try:
             # Validate required args for this mode
             if not args.item_id:
                 raise ValueError("--item-id is required when using --run-single-scenario")
+            # Warn if optional args are missing
             if not args.species:
                 logger.warning("Missing --species argument, using default.")
             if not args.model:
@@ -350,14 +355,14 @@ def main():
             if not args.reasoning_level:
                 logger.warning("Missing --reasoning-level argument, using default.")
 
-            # Import necessary functions
+            # Import necessary functions dynamically
             try:
                 from dashboard.run_scenario_pipelines import run_and_save_single_scenario, load_scenarios
             except ImportError as e:
                 logger.error(f"Failed to import single scenario run functions: {e}", exc_info=True)
                 raise # Re-raise to exit
 
-            # Prepare Args Namespace
+            # Prepare Args Namespace, applying defaults
             default_data_dir = "data"
             default_results_dir = "results"
             default_scenarios_file = os.path.join(default_data_dir, "scenarios.json")
@@ -393,7 +398,7 @@ def main():
 
             logger.info(f"Found scenario item ID: {args.item_id}. Starting run...")
 
-            # Execute the single run
+            # Execute the single run (run_and_save_single_scenario is async)
             saved_file = asyncio.run(run_and_save_single_scenario(target_item, single_run_args))
 
             if saved_file:
@@ -401,43 +406,35 @@ def main():
             else:
                 logger.error(f"Single scenario run for item ID {args.item_id} failed to save results.")
 
-        except ValueError as e:
+        except ValueError as e: # Catch specific configuration errors
             logger.error(f"Configuration error for single scenario run: {e}")
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
-        except Exception as e:
+        except Exception as e: # Catch general errors during execution
             logger.error(f"Error during CLI single scenario run: {e}", exc_info=True)
             print(f"Error during single scenario run: {e}", file=sys.stderr)
             sys.exit(1)
+        # --- End Run Single Scenario Pipeline ---
 
-    else: # Default to UI
-        # --- MODIFICATION START ---
-        # Run Splash Screen first if available
-        if SplashApp:
-            try:
-                logger.info("Starting splash screen...")
-                SplashApp().run()
-                logger.info("Splash screen finished.")
-            except Exception as e_splash:
-                logger.error(f"An error occurred while running the splash screen: {e_splash}", exc_info=True)
-                print(f"WARNING: An error occurred during splash screen: {e_splash}", file=sys.stderr)
-                # Continue to main app even if splash fails
-
-        # Now run the main dashboard app if available
+    else: # Default to UI mode if no CLI action specified
+        # --- Run Dashboard UI ---
         if EthicsEngineApp:
             try:
                 logger.info("Starting main dashboard UI...")
+                # Instantiate and run the Textual app
                 EthicsEngineApp().run()
             except Exception as e_main_app:
-                # Catch errors during instantiation or run()
+                # Catch errors during app instantiation or run()
                 logger.error(f"An error occurred while instantiating or running the dashboard: {e_main_app}", exc_info=True)
                 print(f"ERROR: An error occurred while running the dashboard: {e_main_app}", file=sys.stderr)
                 sys.exit(1)
         else:
-            # This case should now be hit if the import failed at the top level
+            # This case is hit if EthicsEngineApp failed to import at the top level
             print("Error: Could not start the dashboard UI because EthicsEngineApp failed to import. Check logs.", file=sys.stderr)
             sys.exit(1)
-        # --- MODIFICATION END ---
+        # --- End Run Dashboard UI ---
 
+# --- Script Execution Guard ---
 if __name__ == "__main__":
+    # This block ensures main() is called only when the script is executed directly
     main()

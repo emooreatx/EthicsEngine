@@ -18,11 +18,58 @@ Footer {
     background: $primary-darken-1; color: $text-muted;
 }
 
+/* --- Status Bar (New) --- */
+#status-bar {
+    layer: base; /* Ensure it's on the base layer */
+    dock: top; /* Dock it to the top */
+    offset-y: 1; /* Position it below the Header (which has height 1) */
+    height: 1;
+    background: green; /* Set background back to green */
+    padding: 0 1;
+    align: left middle; /* Align items vertically centered */
+    grid-size: 3; /* Restore grid */
+    grid-gutter: 1 8; /* Increase horizontal spacing */
+}
+
+#status-bar > Static {
+    width: auto; /* Let them take needed space */
+    height: 1;
+    /* color: $text-muted; Keep default color for better contrast on green */
+    /* margin-right: 2; No longer needed with grid */
+}
+
+#status-bar > #run-status {
+    grid-columns: 1; /* Restore grid column */
+}
+
+#status-bar > #semaphore-status-display {
+    grid-columns: 2; /* Restore grid column */
+}
+
+#status-bar > LoadingIndicator {
+    grid-columns: 3; /* Restore grid column */
+    align: right middle; /* Restore alignment */
+    width: auto;
+    height: auto;
+    color: $warning;
+}
+
+/* --- Main Layout Containers --- */
+#main-layout {
+    height: 1fr; /* Ensure main horizontal layout fills vertical space */
+    margin-top: 2; /* Increase margin to push below docked status bar */
+}
+
+#main-content {
+    height: 100%; /* Ensure main content area fills its parent */
+}
+
+
 /* --- Tabs --- */
 TabbedContent {
-    layer: base;
+    /* layer: base; REMOVED - Layering handled by parent containers */
     height: 1fr; /* Ensure it takes available vertical space */
-    margin-top: 1; /* Push tabs down one line */
+    /* margin-top: 1; REMOVED - No longer needed */
 }
 
 /* --- REMOVED custom Tabs, Tab, Tab.--current styles --- */
@@ -58,8 +105,8 @@ RunConfigurationView { height: 1fr; } /* Allow view to fill height */
 #main-config-area RadioSet { width: auto; height: auto; margin-bottom: 1; margin-left: 2; }
 #main-config-area .button-group { width: 100%; height: auto; align: left middle; margin-top: 1; }
 #main-config-area .run-button { width: auto; margin-right: 2; }
-#main-config-area #run-status { margin-top: 1; color: $text-muted; height: auto; }
-#main-config-area #semaphore-status-display { height: auto; }
+/* #main-config-area #run-status { margin-top: 1; color: $text-muted; height: auto; } REMOVED - Moved to #status-bar */
+/* #main-config-area #semaphore-status-display { height: auto; } REMOVED - Moved to #status-bar */
 
 /* Right side: Queue frame */
 #run-queue-frame {
@@ -136,14 +183,8 @@ CreateItemScreen Horizontal, EditItemScreen Horizontal { align: right middle; he
 CreateItemScreen Horizontal Button, EditItemScreen Horizontal Button { margin-left: 2; }
 
 /* --- Loading Indicator (Positioned via Layer) --- */
-#loading-layer-container {
-    layer: loading; /* Ensure it's on the top layer */
-    align: right top; /* Align container content (indicator) */
-    width: 100%;
-    height: 1; /* Give it minimal height */
-    /* margin-top: 1; REMOVED - Rely on layer/alignment */
-}
-LoadingIndicator { width: auto; height: auto; margin: 0 1; color: $warning; }
+/* #loading-layer-container { ... } REMOVED - Indicator moved to #status-bar */
+/* LoadingIndicator { ... } REMOVED - Style now under #status-bar > LoadingIndicator */
 
 
 /* --- Queue Pane Styling (Now inside RunConfigurationView) --- */
